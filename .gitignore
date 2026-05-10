@@ -1,0 +1,22 @@
+node_modules
+
+# Real env file — never commit this
+.env
+
+# Example template — safe to commit, this is intentional
+!.env.example
+
+# Hardhat files
+/cache
+/artifacts
+
+# TypeChain files
+/typechain
+/typechain-types
+
+# solidity-coverage files
+/coverage
+/coverage.json
+
+# Hardhat Ignition default folder for deployments against a local node
+ignition/deployments/chain-31337
