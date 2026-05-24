@@ -1,132 +1,248 @@
-import { ShieldCheck, FileCheck, Pill, Wallet } from "lucide-react";
-import { Link } from "react-router-dom";
+import {
+  ShieldCheck,
+  FileCheck,
+  Pill,
+  ArrowRight,
+  UserCheck,
+  ClipboardList,
+  ScanLine,
+  CheckCircle2,
+} from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import useWallet from "../hooks/useWallet";
 
+const stats = [
+  { value: "$432B", label: "Counterfeit drug market annually", src: "WHO, 2024" },
+  { value: "1M+", label: "Deaths from fake medicines per year", src: "WHO" },
+  { value: "10.5%", label: "Medicines in developing countries are substandard", src: "WHO" },
+];
+
+const features = [
+  {
+    icon: <ShieldCheck size={24} />,
+    title: "Verified Doctors Only",
+    desc: "Only admin-approved doctor wallets can issue prescriptions on-chain.",
+  },
+  {
+    icon: <FileCheck size={24} />,
+    title: "Tamper-Proof Records",
+    desc: "Prescription hashes stored on-chain — any alteration immediately invalidates them.",
+  },
+  {
+    icon: <Pill size={24} />,
+    title: "No Double Dispensing",
+    desc: "Smart contract marks prescriptions as DISPENSED — cannot be reused at any pharmacy.",
+  },
+];
+
+const steps = [
+  {
+    icon: <UserCheck size={20} />,
+    title: "Register",
+    desc: "Doctor or pharmacy submits registration request on-chain.",
+  },
+  {
+    icon: <CheckCircle2 size={20} />,
+    title: "Admin Approves",
+    desc: "KKM/MMC admin verifies credentials and approves on-chain.",
+  },
+  {
+    icon: <ClipboardList size={20} />,
+    title: "Issue Prescription",
+    desc: "Approved doctor issues a tamper-proof prescription.",
+  },
+  {
+    icon: <ScanLine size={20} />,
+    title: "Verify & Dispense",
+    desc: "Pharmacist verifies on-chain and dispenses medication once.",
+  },
+];
+
 export default function Home() {
-  const { account, connectWallet, isWrongNetwork } = useWallet();
+  const { account, connectWallet, getRoleRedirectPath } = useWallet();
+  const navigate = useNavigate();
 
   return (
-    <div className="space-y-10">
-      <section className="grid items-center gap-10 rounded-3xl bg-gradient-to-br from-blue-700 to-indigo-800 px-8 py-14 text-white md:grid-cols-2">
-        <div>
-          <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-blue-100">
-            Blockchain Prescription Verification
+    <div className="space-y-12 sm:space-y-16">
+      <section className="animate-fade-in-up">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-700 via-brand-600 to-teal-500 px-5 py-10 text-white sm:rounded-3xl sm:px-8 sm:py-16 md:px-14 md:py-20">
+          <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/5" />
+          <div className="absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-white/5" />
+
+          <div className="relative grid items-center gap-8 md:grid-cols-2 md:gap-10">
+            <div>
+              <span className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-medium backdrop-blur-sm sm:px-4 sm:py-1.5 sm:text-sm">
+                <ShieldCheck size={14} />
+                Blockchain Prescription Verification
+              </span>
+
+              <h1 className="mt-4 text-2xl font-bold leading-tight sm:text-3xl md:text-4xl lg:text-5xl">
+                Stop forged prescriptions.
+                <br />
+                <span className="text-brand-100">Protect every patient.</span>
+              </h1>
+
+              <p className="mt-4 max-w-lg text-sm text-brand-100/90 sm:mt-5 sm:text-base md:text-lg">
+                RxChain uses smart contracts to verify doctors, issue tamper-proof
+                prescriptions, and prevent double dispensing — in real time.
+              </p>
+
+              <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
+                {account ? (
+                  <Link to="/patient">
+                    <HeroButton>
+                      Open Dashboard
+                      <ArrowRight size={16} />
+                    </HeroButton>
+                  </Link>
+                ) : (
+                  <HeroButton onClick={async () => {
+                    const addr = await connectWallet();
+                    if (addr) navigate(getRoleRedirectPath());
+                  }}>
+                    Connect MetaMask
+                    <ArrowRight size={16} />
+                  </HeroButton>
+                )}
+
+                <Link to="/register">
+                  <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/20 active:scale-[0.97] sm:w-auto">
+                    Register as Doctor / Pharmacy
+                  </button>
+                </Link>
+              </div>
+            </div>
+
+            <div className="hidden md:block">
+              <div className="grid gap-3">
+                {stats.map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rounded-2xl bg-white/10 p-5 backdrop-blur-sm transition-all duration-300 hover:bg-white/15"
+                  >
+                    <p className="text-2xl font-bold">{stat.value}</p>
+                    <p className="mt-1 text-sm text-brand-100">{stat.label}</p>
+                    <p className="mt-0.5 text-xs text-brand-200/70">{stat.src}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 grid grid-cols-3 gap-3 md:hidden">
+            {stats.map((stat) => (
+              <div key={stat.label} className="rounded-xl bg-white/10 p-3 text-center backdrop-blur-sm">
+                <p className="text-lg font-bold sm:text-xl">{stat.value}</p>
+                <p className="mt-0.5 text-[10px] leading-tight text-brand-100 sm:text-xs">
+                  {stat.label}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="animate-fade-in">
+        <div className="mb-6 text-center sm:mb-8">
+          <h2 className="text-xl font-bold text-slate-900 sm:text-2xl md:text-3xl">
+            Why RxChain?
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Solving critical prescription fraud problems with blockchain verification.
           </p>
+        </div>
 
-          <h1 className="text-4xl font-bold leading-tight md:text-5xl">
-            Stop forged prescriptions and double dispensing.
-          </h1>
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-5 md:grid-cols-3">
+          {features.map((f) => (
+            <Card key={f.title} hover>
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600 sm:h-11 sm:w-11 sm:rounded-xl">
+                {f.icon}
+              </div>
+              <h3 className="mt-3 text-sm font-bold text-slate-900 sm:mt-4 sm:text-base">
+                {f.title}
+              </h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500 sm:mt-2 sm:text-sm">
+                {f.desc}
+              </p>
+            </Card>
+          ))}
+        </div>
+      </section>
 
-          <p className="mt-5 max-w-xl text-blue-100">
-            RxChain uses smart contracts to verify doctors, issue tamper-proof prescriptions,
-            and allow pharmacists to dispense medication only once.
+      <section className="animate-fade-in">
+        <div className="mb-6 text-center sm:mb-8">
+          <h2 className="text-xl font-bold text-slate-900 sm:text-2xl md:text-3xl">
+            How It Works
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Four simple steps from registration to dispensing.
           </p>
+        </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            {account ? (
-              <Link to="/patient">
-                <Button variant="secondary">Open Dashboard</Button>
-              </Link>
-            ) : (
-              <Button onClick={connectWallet} variant="secondary">
-                Connect MetaMask
-              </Button>
-            )}
+        <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-4">
+          {steps.map((step, i) => (
+            <div key={step.title} className="relative">
+              <Card hover className="relative h-full">
+                <div className="mb-3 flex items-center gap-2 sm:mb-4 sm:gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white shadow-sm shadow-brand-600/30 sm:h-10 sm:w-10 sm:text-sm">
+                    {i + 1}
+                  </div>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-50 text-brand-600 sm:h-9 sm:w-9">
+                    {step.icon}
+                  </div>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 sm:text-base">
+                  {step.title}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 sm:mt-1.5 sm:text-sm">
+                  {step.desc}
+                </p>
+              </Card>
 
+              {i < steps.length - 1 && (
+                <div className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-slate-300 sm:-right-3 md:block">
+                  <ArrowRight size={16} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="animate-fade-in">
+        <div className="rounded-2xl border border-brand-200 bg-brand-50/50 px-5 py-8 text-center sm:px-8 sm:py-10">
+          <h2 className="text-lg font-bold text-slate-900 sm:text-xl md:text-2xl">
+            Ready to get started?
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Connect your MetaMask wallet to register as a doctor or pharmacy, or
+            view your prescriptions.
+          </p>
+          <div className="mt-5 flex flex-col justify-center gap-3 sm:mt-6 sm:flex-row">
             <Link to="/register">
-              <Button className="bg-white/10 text-white hover:bg-white/20">
-                Register as Doctor / Pharmacy
+              <Button className="w-full sm:w-auto">Register Now</Button>
+            </Link>
+            <Link to="/patient">
+              <Button variant="secondary" className="w-full sm:w-auto">
+                View Prescriptions
               </Button>
             </Link>
           </div>
-
-          {isWrongNetwork && (
-            <div className="mt-5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-              Please switch MetaMask to Sepolia Testnet.
-            </div>
-          )}
-        </div>
-
-        <Card className="bg-white/10 text-white backdrop-blur">
-          <div className="grid gap-4">
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-blue-100">Main Goal</p>
-              <p className="mt-1 text-lg font-bold">Tamper-proof prescription verification</p>
-            </div>
-
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-blue-100">Network</p>
-              <p className="mt-1 text-lg font-bold">Ethereum Sepolia Testnet</p>
-            </div>
-
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="text-sm text-blue-100">Storage</p>
-              <p className="mt-1 text-lg font-bold">On-chain hash + IPFS data</p>
-            </div>
-          </div>
-        </Card>
-      </section>
-
-      <section className="grid gap-6 md:grid-cols-3">
-        <Card>
-          <ShieldCheck className="mb-4 text-blue-600" size={32} />
-          <h3 className="text-lg font-bold text-slate-900">Verified Doctors</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            Only admin-approved doctor wallets can issue prescriptions.
-          </p>
-        </Card>
-
-        <Card>
-          <FileCheck className="mb-4 text-blue-600" size={32} />
-          <h3 className="text-lg font-bold text-slate-900">Tamper-Proof Records</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            Prescription hashes are stored on-chain to detect alteration.
-          </p>
-        </Card>
-
-        <Card>
-          <Pill className="mb-4 text-blue-600" size={32} />
-          <h3 className="text-lg font-bold text-slate-900">No Double Dispensing</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            Once dispensed, the smart contract prevents reuse.
-          </p>
-        </Card>
-      </section>
-
-      <section>
-        <h2 className="mb-4 text-2xl font-bold text-slate-900">How It Works</h2>
-
-        <div className="grid gap-4 md:grid-cols-4">
-          {[
-            "Doctor or pharmacy registers",
-            "Admin approves the wallet",
-            "Doctor issues prescription",
-            "Pharmacist verifies and dispenses",
-          ].map((item, index) => (
-            <Card key={item}>
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
-                {index + 1}
-              </div>
-              <p className="font-semibold text-slate-800">{item}</p>
-            </Card>
-          ))}
         </div>
       </section>
     </div>
   );
 }
 
-
-
-
-// // Build the landing page UI here
-// // Includes: Hero section, Connect Wallet button, network warning banner,
-// //           role detection after connect, Register as Doctor/Pharmacy buttons
-
-// function Home() {
-//   return <div>Home Page</div>;
-// }
-
-// export default Home;
+function HeroButton({ children, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-brand-700 shadow-lg shadow-brand-900/20 transition-all duration-200 hover:bg-brand-50 active:scale-[0.97] sm:w-auto"
+    >
+      {children}
+    </button>
+  );
+}

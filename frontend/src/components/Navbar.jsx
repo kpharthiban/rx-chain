@@ -1,45 +1,156 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Shield, Menu, X, Wifi, WifiOff } from "lucide-react";
 import Button from "./Button";
 import useWallet from "../hooks/useWallet";
 
+const SEPOLIA_CHAIN_ID = "0xaa36a7";
+const ADMIN_WALLET = "0x0000000000000000000000000000000000000000";
+
 export default function Navbar() {
-  const { account, connectWallet, isWrongNetwork } = useWallet();
+  const { account, chainId, connectWallet, getRoleRedirectPath } = useWallet();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const shortAddress = account
     ? `${account.slice(0, 6)}...${account.slice(-4)}`
     : "";
 
+  const isWrongNetwork = account && chainId && chainId !== SEPOLIA_CHAIN_ID;
+  const isAdmin =
+    account && account.toLowerCase() === ADMIN_WALLET.toLowerCase();
+
+  const links = getLinksForRole(account, isAdmin);
+
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        <Link to="/" className="text-xl font-bold text-blue-700">
-          RxChain
+    <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+        <Link to="/" className="group flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 shadow-sm shadow-brand-600/30 transition-transform duration-200 group-hover:scale-105 sm:h-9 sm:w-9 sm:rounded-xl">
+            <Shield size={16} className="text-white" />
+          </div>
+          <span className="text-base font-bold text-slate-900 sm:text-lg">
+            Rx<span className="text-brand-600">Chain</span>
+          </span>
         </Link>
 
-        <nav className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
-          <Link to="/register" className="hover:text-blue-700">Register</Link>
-          <Link to="/admin" className="hover:text-blue-700">Admin</Link>
-          <Link to="/doctor" className="hover:text-blue-700">Doctor</Link>
-          <Link to="/pharmacist" className="hover:text-blue-700">Pharmacist</Link>
-          <Link to="/patient" className="hover:text-blue-700">Patient</Link>
+        <nav className="hidden items-center gap-1 md:flex">
+          {links.map((link) => {
+            const isActive = location.pathname === link.to;
+            return (
+              <Link
+                key={link.to}
+                to={link.to}
+                className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-colors duration-200 ${
+                  isActive
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="flex items-center gap-3">
-          {isWrongNetwork && (
-            <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
-              Wrong Network
-            </span>
+        <div className="flex items-center gap-2">
+          {account && (
+            <div className="hidden items-center gap-1.5 md:flex">
+              {isWrongNetwork ? (
+                <span className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">
+                  <WifiOff size={12} />
+                  Wrong Network
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+                  <Wifi size={12} />
+                  Sepolia
+                </span>
+              )}
+            </div>
           )}
 
           {account ? (
-            <span className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+            <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
+              <div className="h-2 w-2 rounded-full bg-emerald-500" />
               {shortAddress}
-            </span>
+            </div>
           ) : (
-            <Button onClick={connectWallet}>Connect Wallet</Button>
+            <Button onClick={async () => {
+              const addr = await connectWallet();
+              if (addr) navigate(getRoleRedirectPath());
+            }} size="sm">
+              Connect Wallet
+            </Button>
           )}
+
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="flex items-center justify-center rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+          >
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
       </div>
+
+      {mobileOpen && (
+        <div className="animate-slide-up border-t border-slate-200/80 bg-white px-4 pb-4 pt-3 md:hidden">
+          {account && isWrongNetwork && (
+            <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              <WifiOff size={12} />
+              Please switch to Sepolia Testnet
+            </div>
+          )}
+
+          {account && !isWrongNetwork && (
+            <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+              <Wifi size={12} />
+              Connected to Sepolia
+            </div>
+          )}
+
+          <nav className="flex flex-col gap-0.5">
+            {links.map((link) => {
+              const isActive = location.pathname === link.to;
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setMobileOpen(false)}
+                  className={`rounded-lg px-4 py-3 text-base font-medium transition-colors ${
+                    isActive
+                      ? "bg-brand-50 text-brand-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
     </header>
   );
+}
+
+function getLinksForRole(account, isAdmin) {
+  if (!account) {
+    return [
+      { to: "/register", label: "Register" },
+      { to: "/patient", label: "Patient" },
+    ];
+  }
+
+  if (isAdmin) {
+    return [{ to: "/admin", label: "Admin Panel" }];
+  }
+
+  return [
+    { to: "/patient", label: "My Prescriptions" },
+    { to: "/doctor", label: "Doctor" },
+    { to: "/pharmacist", label: "Pharmacist" },
+    { to: "/register", label: "Register" },
+  ];
 }

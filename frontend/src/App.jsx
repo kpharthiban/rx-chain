@@ -11,9 +11,9 @@ import PatientView from "./pages/PatientView";
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-slate-50">
+      <div className="flex min-h-screen flex-col bg-[#f8fafb]">
         <Navbar />
-        <main className="mx-auto max-w-7xl px-6 py-8">
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/register" element={<Register />} />
@@ -27,32 +27,3 @@ export default function App() {
     </BrowserRouter>
   );
 }
-
-
-
-
-// import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-// import Home from "./pages/Home";
-// import AdminPanel from "./pages/AdminPanel";
-// import Register from "./pages/Register";
-// import DoctorDashboard from "./pages/DoctorDashboard";
-// import PharmacistDashboard from "./pages/PharmacistDashboard";
-// import PatientView from "./pages/PatientView";
-
-// function App() {
-//   return (
-//     <Router>
-//       <Routes>
-//         <Route path="/" element={<Home />} />
-//         <Route path="/admin" element={<AdminPanel />} />
-//         <Route path="/register" element={<Register />} />
-//         <Route path="/doctor" element={<DoctorDashboard />} />
-//         <Route path="/pharmacist" element={<PharmacistDashboard />} />
-//         <Route path="/patient" element={<PatientView />} />
-//       </Routes>
-//     </Router>
-//   );
-// }
-
-// export default App;
-
