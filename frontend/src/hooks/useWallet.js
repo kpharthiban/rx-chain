@@ -1,73 +1,121 @@
 import { useState, useEffect, useCallback } from "react";
 
-/**
- * useWallet
- * Manages MetaMask wallet connection, account state, and network detection.
- *
- * Returns:
- *  - account        : connected wallet address (null if not connected)
- *  - chainId        : current network chain ID
- *  - isConnecting   : true while waiting for MetaMask to respond
- *  - error          : error message string if something went wrong
- *  - connectWallet  : function to trigger MetaMask connection
- *  - disconnectWallet: function to clear local wallet state
- */
+const SEPOLIA_CHAIN_ID = "0xaa36a7";
+const ADMIN_WALLET = "0x0000000000000000000000000000000000000000";
+
 const useWallet = () => {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
 
-  // TODO: Check if MetaMask is installed (window.ethereum exists)
+  const isWrongNetwork = account && chainId && chainId !== SEPOLIA_CHAIN_ID;
 
-  // TODO: On mount, check if a wallet is already connected (eth_accounts)
-  //       and set account + chainId from the existing session
   useEffect(() => {
-    // TODO: implement auto-reconnect on page load
+    if (!window.ethereum) return;
+
+    window.ethereum
+      .request({ method: "eth_accounts" })
+      .then((accounts) => {
+        if (accounts.length > 0) {
+          setAccount(accounts[0]);
+          return window.ethereum.request({ method: "eth_chainId" });
+        }
+      })
+      .then((id) => {
+        if (id) setChainId(id);
+      })
+      .catch(() => {});
   }, []);
 
-  // TODO: Listen for MetaMask account changes (accountsChanged event)
-  //       Update account state or clear it if user disconnects in MetaMask
   useEffect(() => {
-    // TODO: window.ethereum.on("accountsChanged", handler)
-    // TODO: return cleanup — window.ethereum.removeListener(...)
+    if (!window.ethereum) return;
+
+    const handleAccountsChanged = (accounts) => {
+      if (accounts.length === 0) {
+        setAccount(null);
+        setChainId(null);
+      } else {
+        setAccount(accounts[0]);
+      }
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    return () =>
+      window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
   }, []);
 
-  // TODO: Listen for MetaMask network/chain changes (chainChanged event)
-  //       Update chainId state; optionally reload the page (MetaMask recommends this)
   useEffect(() => {
-    // TODO: window.ethereum.on("chainChanged", handler)
-    // TODO: return cleanup — window.ethereum.removeListener(...)
+    if (!window.ethereum) return;
+
+    const handleChainChanged = (newChainId) => {
+      setChainId(newChainId);
+    };
+
+    window.ethereum.on("chainChanged", handleChainChanged);
+    return () =>
+      window.ethereum.removeListener("chainChanged", handleChainChanged);
   }, []);
 
-  /**
-   * connectWallet
-   * Prompts MetaMask to connect and stores the returned account address.
-   */
   const connectWallet = useCallback(async () => {
-    // TODO: setIsConnecting(true), clear previous error
-    // TODO: call window.ethereum.request({ method: "eth_requestAccounts" })
-    // TODO: get chainId via window.ethereum.request({ method: "eth_chainId" })
-    // TODO: setAccount and setChainId on success
-    // TODO: catch errors (user rejected, MetaMask not installed) and setError
-    // TODO: setIsConnecting(false) in finally block
+    if (!window.ethereum) {
+      setError("MetaMask is not installed. Please install MetaMask to continue.");
+      return null;
+    }
+
+    try {
+      setIsConnecting(true);
+      setError(null);
+
+      const accounts = await window.ethereum.request({
+        method: "eth_requestAccounts",
+      });
+      const id = await window.ethereum.request({ method: "eth_chainId" });
+
+      setAccount(accounts[0]);
+      setChainId(id);
+
+      return accounts[0];
+    } catch (err) {
+      if (err.code === 4001) {
+        setError("Connection rejected. Please approve the MetaMask request.");
+      } else {
+        setError("Failed to connect wallet. Please try again.");
+      }
+      return null;
+    } finally {
+      setIsConnecting(false);
+    }
   }, []);
 
-  /**
-   * disconnectWallet
-   * Clears local wallet state (MetaMask does not support programmatic disconnect).
-   */
   const disconnectWallet = useCallback(() => {
-    // TODO: setAccount(null), setChainId(null), setError(null)
+    setAccount(null);
+    setChainId(null);
+    setError(null);
   }, []);
+
+  const getRole = useCallback(() => {
+    if (!account) return null;
+    if (account.toLowerCase() === ADMIN_WALLET.toLowerCase()) return "admin";
+    return "user";
+  }, [account]);
+
+  const getRoleRedirectPath = useCallback(() => {
+    const role = getRole();
+    if (role === "admin") return "/admin";
+    return "/patient";
+  }, [getRole]);
 
   return {
     account,
     chainId,
     isConnecting,
+    isWrongNetwork,
     error,
     connectWallet,
     disconnectWallet,
+    getRole,
+    getRoleRedirectPath,
   };
 };
 
