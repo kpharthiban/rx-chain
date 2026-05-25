@@ -69,10 +69,8 @@ export default function AdminPanel() {
   const [tab, setTab] = useState("doctors");
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
-  const [detailModal, setDetailModal] = useState(null);
 
   const handleAction = (action, name) => {
-    setDetailModal(null);
     setTxStatus("pending");
     setTxMessage(`${action} transaction is waiting for MetaMask confirmation...`);
     setTimeout(() => {

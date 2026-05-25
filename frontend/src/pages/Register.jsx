@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { UserPlus, Building2, Wallet } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
@@ -8,8 +7,7 @@ import TxStatus from "../components/TxStatus";
 import useWallet from "../hooks/useWallet";
 
 export default function Register() {
-  const { account, connectWallet, getRoleRedirectPath } = useWallet();
-  const navigate = useNavigate();
+  const { account, connectWallet } = useWallet();
   const [tab, setTab] = useState("doctor");
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
@@ -51,10 +49,7 @@ export default function Register() {
                 </p>
               </div>
             </div>
-            <Button onClick={async () => {
-              const addr = await connectWallet();
-              if (addr) navigate(getRoleRedirectPath());
-            }} size="sm">
+            <Button onClick={connectWallet} size="sm">
               Connect Wallet
             </Button>
           </div>
@@ -102,18 +97,21 @@ export default function Register() {
             <>
               <FormField label="Full Name">
                 <input
+                  required
                   placeholder="Dr. Ahmad"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />
               </FormField>
               <FormField label="MMC Registration Number">
                 <input
+                  required
                   placeholder="MMC-12345"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />
               </FormField>
               <FormField label="Specialization">
                 <input
+                  required
                   placeholder="General Practitioner"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />
@@ -123,18 +121,21 @@ export default function Register() {
             <>
               <FormField label="Pharmacy Name">
                 <input
+                  required
                   placeholder="RxCare Pharmacy"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />
               </FormField>
               <FormField label="Pharmacy Board Registration Number">
                 <input
+                  required
                   placeholder="PBM-67890"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />
               </FormField>
               <FormField label="Pharmacy Address">
                 <input
+                  required
                   placeholder="Kuala Lumpur, Malaysia"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />

@@ -91,7 +91,7 @@ export default function Home() {
 
               <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
                 {account ? (
-                  <Link to="/patient">
+                  <Link to={getRoleRedirectPath()}>
                     <HeroButton>
                       Open Dashboard
                       <ArrowRight size={16} />

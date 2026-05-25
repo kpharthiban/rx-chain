@@ -6,13 +6,17 @@ import {
   Ban,
   Stethoscope,
   Send,
+  XCircle,
+  Wallet,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import Badge from "../components/Badge";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import TxStatus from "../components/TxStatus";
+import useWallet from "../hooks/useWallet";
 
 const mockPrescriptions = [
   { id: "#001", patient: "0xAB...123", expiry: "5 Jun 2026", status: "active" },
@@ -21,8 +25,43 @@ const mockPrescriptions = [
 ];
 
 export default function DoctorDashboard() {
+  const { account, connectWallet, getRoleRedirectPath } = useWallet();
+  const navigate = useNavigate();
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
+  const [confirmingRevoke, setConfirmingRevoke] = useState(null);
+  const [prescriptions, setPrescriptions] = useState(mockPrescriptions);
+
+  if (!account) {
+    return (
+      <div className="animate-fade-in-up">
+        <PageHeader
+          title="Doctor Dashboard"
+          subtitle="Issue blockchain-verified prescriptions and manage prescription records."
+          icon={<Stethoscope size={22} />}
+        />
+        <Card className="text-center">
+          <div className="flex flex-col items-center py-8">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+              <Wallet size={28} />
+            </div>
+            <h2 className="mt-4 text-lg font-bold text-slate-900">
+              Connect Your Wallet
+            </h2>
+            <p className="mt-2 max-w-sm text-sm text-slate-500">
+              Connect your MetaMask wallet to access the doctor dashboard.
+            </p>
+            <Button className="mt-5" onClick={async () => {
+              const addr = await connectWallet();
+              if (addr) navigate(getRoleRedirectPath());
+            }}>
+              Connect Wallet
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const handleIssue = (e) => {
     e.preventDefault();
@@ -31,6 +70,19 @@ export default function DoctorDashboard() {
     setTimeout(() => {
       setTxStatus("confirmed");
       setTxMessage("Prescription issued successfully. ID: #004");
+    }, 1000);
+  };
+
+  const handleRevoke = (id) => {
+    setConfirmingRevoke(null);
+    setTxStatus("pending");
+    setTxMessage(`Revoking prescription ${id} — waiting for MetaMask confirmation...`);
+    setTimeout(() => {
+      setPrescriptions((prev) =>
+        prev.map((rx) => (rx.id === id ? { ...rx, status: "revoked" } : rx))
+      );
+      setTxStatus("confirmed");
+      setTxMessage(`Prescription ${id} revoked successfully.`);
     }, 1000);
   };
 
@@ -126,24 +178,60 @@ export default function DoctorDashboard() {
 
         <Card>
           <h2 className="mb-5 text-lg font-bold text-slate-900">
-            My Prescriptions
+            Prescriptions Issued
           </h2>
 
-          {mockPrescriptions.length > 0 ? (
+          {prescriptions.length > 0 ? (
             <div className="space-y-3">
-              {mockPrescriptions.map((rx) => (
+              {prescriptions.map((rx) => (
                 <div
                   key={rx.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 p-4 transition-colors hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 p-4 transition-colors hover:bg-slate-50"
                 >
-                  <div>
-                    <p className="font-semibold text-slate-900">{rx.id}</p>
-                    <p className="mt-0.5 text-sm text-slate-500">
-                      Patient: {rx.patient}
-                    </p>
-                    <p className="text-sm text-slate-500">Expiry: {rx.expiry}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-900">{rx.id}</p>
+                      <p className="mt-0.5 text-sm text-slate-500">
+                        Patient: {rx.patient}
+                      </p>
+                      <p className="text-sm text-slate-500">Expiry: {rx.expiry}</p>
+                    </div>
+                    <Badge type={rx.status}>{rx.status}</Badge>
                   </div>
-                  <Badge type={rx.status}>{rx.status}</Badge>
+
+                  {rx.status === "active" && confirmingRevoke !== rx.id && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => setConfirmingRevoke(rx.id)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition-all duration-200 hover:bg-red-100 hover:border-red-400 active:scale-[0.97]"
+                      >
+                        <XCircle size={14} />
+                        Revoke Prescription
+                      </button>
+                    </div>
+                  )}
+
+                  {confirmingRevoke === rx.id && (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 p-3">
+                      <p className="flex-1 text-xs font-medium text-red-700">
+                        Revoke this prescription? This cannot be undone.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => handleRevoke(rx.id)}
+                      >
+                        Confirm
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setConfirmingRevoke(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

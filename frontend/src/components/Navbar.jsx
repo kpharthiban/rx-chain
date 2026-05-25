@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Shield, Menu, X, Wifi, WifiOff } from "lucide-react";
+import { Shield, Menu, X, Wifi, WifiOff, LogOut } from "lucide-react";
 import Button from "./Button";
 import useWallet from "../hooks/useWallet";
+import useRoles from "../hooks/useRoles";
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7";
 const ADMIN_WALLET = "0x0000000000000000000000000000000000000000";
 
 export default function Navbar() {
-  const { account, chainId, connectWallet, getRoleRedirectPath } = useWallet();
+  const { account, chainId, connectWallet, disconnectWallet, getRoleRedirectPath } = useWallet();
+  const { isDoctor, isPharmacist } = useRoles(account);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -21,7 +23,13 @@ export default function Navbar() {
   const isAdmin =
     account && account.toLowerCase() === ADMIN_WALLET.toLowerCase();
 
-  const links = getLinksForRole(account, isAdmin);
+  const links = getLinksForRole(account, isAdmin, isDoctor, isPharmacist);
+
+  const handleDisconnect = () => {
+    disconnectWallet();
+    setMobileOpen(false);
+    navigate("/");
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg">
@@ -72,9 +80,18 @@ export default function Navbar() {
           )}
 
           {account ? (
-            <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
-              <div className="h-2 w-2 rounded-full bg-emerald-500" />
-              {shortAddress}
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
+                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                {shortAddress}
+              </div>
+              <button
+                onClick={handleDisconnect}
+                title="Disconnect wallet"
+                className="flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 sm:p-2"
+              >
+                <LogOut size={16} />
+              </button>
             </div>
           ) : (
             <Button onClick={async () => {
@@ -128,6 +145,16 @@ export default function Navbar() {
                 </Link>
               );
             })}
+
+            {account && (
+              <button
+                onClick={handleDisconnect}
+                className="mt-2 flex items-center gap-2 rounded-lg px-4 py-3 text-base font-medium text-red-600 transition-colors hover:bg-red-50"
+              >
+                <LogOut size={18} />
+                Disconnect Wallet
+              </button>
+            )}
           </nav>
         </div>
       )}
@@ -135,7 +162,7 @@ export default function Navbar() {
   );
 }
 
-function getLinksForRole(account, isAdmin) {
+function getLinksForRole(account, isAdmin, isDoctor, isPharmacist) {
   if (!account) {
     return [
       { to: "/register", label: "Register" },
@@ -147,10 +174,15 @@ function getLinksForRole(account, isAdmin) {
     return [{ to: "/admin", label: "Admin Panel" }];
   }
 
+  if (isDoctor) {
+    return [{ to: "/doctor", label: "Doctor" }];
+  }
+  if (isPharmacist) {
+    return [{ to: "/pharmacist", label: "Pharmacist" }];
+  }
+
   return [
     { to: "/patient", label: "My Prescriptions" },
-    { to: "/doctor", label: "Doctor" },
-    { to: "/pharmacist", label: "Pharmacist" },
     { to: "/register", label: "Register" },
   ];
 }
