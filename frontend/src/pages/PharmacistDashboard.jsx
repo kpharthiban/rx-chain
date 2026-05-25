@@ -6,12 +6,15 @@ import {
   Clock,
   AlertTriangle,
   XCircle,
+  Wallet,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import Card from "../components/Card";
 import Button from "../components/Button";
 import Badge from "../components/Badge";
 import PageHeader from "../components/PageHeader";
 import TxStatus from "../components/TxStatus";
+import useWallet from "../hooks/useWallet";
 
 const mockHistory = [
   { id: "#002", doctor: "Dr. Siti", date: "4 Jun 2026" },
@@ -55,6 +58,8 @@ const statusConfig = {
 };
 
 export default function PharmacistDashboard() {
+  const { account, connectWallet, getRoleRedirectPath } = useWallet();
+  const navigate = useNavigate();
   const [rxId, setRxId] = useState("");
   const [result, setResult] = useState(null);
   const [txStatus, setTxStatus] = useState(null);
@@ -81,6 +86,37 @@ export default function PharmacistDashboard() {
   };
 
   const cfg = result ? statusConfig[result.status] : null;
+
+  if (!account) {
+    return (
+      <div className="animate-fade-in-up">
+        <PageHeader
+          title="Pharmacist Dashboard"
+          subtitle="Verify prescription validity and mark medication as dispensed."
+          icon={<Pill size={22} />}
+        />
+        <Card className="text-center">
+          <div className="flex flex-col items-center py-8">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+              <Wallet size={28} />
+            </div>
+            <h2 className="mt-4 text-lg font-bold text-slate-900">
+              Connect Your Wallet
+            </h2>
+            <p className="mt-2 max-w-sm text-sm text-slate-500">
+              Connect your MetaMask wallet to access the pharmacist dashboard.
+            </p>
+            <Button className="mt-5" onClick={async () => {
+              const addr = await connectWallet();
+              if (addr) navigate(getRoleRedirectPath());
+            }}>
+              Connect Wallet
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in-up">

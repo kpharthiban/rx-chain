@@ -38,7 +38,7 @@ const prescriptions = [
     doctor: "Dr. Ahmad",
     drug: "Ritalin 10mg",
     dosage: "1 tablet, once daily",
-    expiry: "Revoked",
+    expiry: "30 May 2026",
     issuedAt: "15 May 2026",
     status: "revoked",
   },
