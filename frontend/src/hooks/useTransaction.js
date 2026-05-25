@@ -34,17 +34,41 @@ const useTransaction = () => {
    * @param {Function} contractCall - An async function that calls the contract method
    */
   const sendTransaction = useCallback(async (contractCall) => {
-    // TODO: setLoading(true), clear previous error/txHash/receipt
-    // TODO: call await contractCall() — this returns a TransactionResponse
-    // TODO: setTxHash(tx.hash) immediately after broadcast
-    // TODO: await tx.wait() to get the TransactionReceipt (waits for mining)
-    // TODO: setReceipt(receipt) on success
-    // TODO: catch errors:
-    //         - user rejected (error.code === 4001 or ACTION_REJECTED) → friendly message
-    //         - insufficient gas → friendly message
-    //         - contract revert → parse error.reason or error.data
-    //         - fallback → setError(error.message)
-    // TODO: setLoading(false) in finally block
+    setLoading(true);
+    setError(null);
+    setTxHash(null);
+    setReceipt(null);
+
+    try {
+      // contractCall() returns a TransactionResponse (broadcast, not yet mined)
+      const tx = await contractCall();
+
+      // Show the hash immediately so the UI can link to Etherscan
+      setTxHash(tx.hash);
+
+      // Wait for the transaction to be mined (returns TransactionReceipt)
+      const txReceipt = await tx.wait();
+      setReceipt(txReceipt);
+    } catch (err) {
+      // User clicked "Reject" in MetaMask
+      if (err.code === 4001 || err.code === "ACTION_REJECTED") {
+        setError("Transaction rejected. You cancelled the MetaMask request.");
+      }
+      // Contract reverted with a require() message
+      else if (err.reason) {
+        setError("Transaction failed: " + err.reason);
+      }
+      // Insufficient funds / gas estimation failed
+      else if (err.message && err.message.includes("insufficient funds")) {
+        setError("Insufficient funds to cover gas. Top up your Sepolia ETH.");
+      }
+      // Fallback — show raw error message
+      else {
+        setError(err.message || "An unknown error occurred.");
+      }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   /**
@@ -53,7 +77,10 @@ const useTransaction = () => {
    * or when the component unmounts.
    */
   const reset = useCallback(() => {
-    // TODO: setLoading(false), setError(null), setTxHash(null), setReceipt(null)
+    setLoading(false);
+    setError(null);
+    setTxHash(null);
+    setReceipt(null);
   }, []);
 
   return {
