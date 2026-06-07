@@ -66,3 +66,51 @@ export async function fetchPrescriptionFromIPFS(cid) {
     throw new Error(error.message || "Failed to fetch prescription from IPFS.");
   }
 }
+
+/**
+ * Uploads a file to IPFS through Pinata.
+ * Used for doctor/pharmacy supporting documents.
+ */
+export async function uploadFileToIPFS(file) {
+  try {
+    if (!PINATA_JWT || PINATA_JWT.includes("PASTE")) {
+      throw new Error("Pinata JWT is missing. Please check frontend/.env.");
+    }
+
+    if (!file) {
+      throw new Error("No file selected.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const metadata = JSON.stringify({
+      name: `${Date.now()}-${file.name}`,
+    });
+
+    formData.append("pinataMetadata", metadata);
+
+    const response = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${PINATA_JWT}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Pinata file upload failed: ${errorText}`);
+    }
+
+    const result = await response.json();
+
+    return {
+      cid: result.IpfsHash,
+      url: `${PINATA_GATEWAY}${result.IpfsHash}`,
+    };
+  } catch (error) {
+    console.error("IPFS file upload error:", error);
+    throw new Error(error.message || "Failed to upload file to IPFS.");
+  }
+}
