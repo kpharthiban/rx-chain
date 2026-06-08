@@ -1,7 +1,7 @@
 // src/config/contract.js
 import PrescriptionRegistryABI from "./PrescriptionRegistryABI.json";
 
-export const CONTRACT_ADDRESS = "PASTE_DEPLOYED_CONTRACT_ADDRESS_HERE";
+export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 
 export const CONTRACT_ABI = PrescriptionRegistryABI.abi || PrescriptionRegistryABI;
 
@@ -22,9 +22,8 @@ export const NETWORK = {
 
 
 
-// // Paste ABI here once contract is compiled
-// // ABI is found at: artifacts/contracts/PrescriptionRegistry.sol/PrescriptionRegistry.json
 
-// export const CONTRACT_ADDRESS = ""; // Fill in after deployment
-
-// export const CONTRACT_ABI = []; // Fill in after "npx hardhat compile" is executed
+// // Paste ABI here once contract is compiled // 
+// // ABI is found at: artifacts/contracts/PrescriptionRegistry.sol/PrescriptionRegistry.json 
+// // export const CONTRACT_ADDRESS = ""; // Fill in after deployment 
+// // export const CONTRACT_ABI = []; // Fill in after "npx hardhat compile" is executed

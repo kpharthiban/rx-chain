@@ -5,46 +5,49 @@
 const { ethers, run, network } = require("hardhat");
 
 async function main() {
-
-  // ── STEP 1: Show deployer info ───────────────────────────────────────────────
   const [deployer] = await ethers.getSigners();
+
+  const balance = await ethers.provider.getBalance(deployer.address);
+
   console.log("===========================================");
   console.log("Deploying PrescriptionRegistry...");
   console.log("===========================================");
   console.log("Network       :", network.name);
   console.log("Deployer      :", deployer.address);
-  console.log("Balance       :", ethers.utils.formatEther(
-    await deployer.getBalance()
-  ), "ETH");
+  console.log("Balance       :", ethers.formatEther(balance), "ETH");
   console.log("===========================================");
 
-  // ── STEP 2: Deploy the contract ─────────────────────────────────────────────
   const Factory = await ethers.getContractFactory("PrescriptionRegistry");
   const contract = await Factory.deploy();
-  await contract.deployed();
 
-  console.log("Contract deployed to :", contract.address);
-  console.log("Transaction hash     :", contract.deployTransaction.hash);
+  await contract.waitForDeployment();
+
+  const contractAddress = await contract.getAddress();
+  const deploymentTx = contract.deploymentTransaction();
+
+  console.log("Contract deployed to :", contractAddress);
+  console.log("Transaction hash     :", deploymentTx.hash);
   console.log("===========================================");
 
-  // ── STEP 3: Wait for block confirmations ────────────────────────────────────
-  // Only wait on Sepolia — Ganache confirms instantly
   if (network.name === "sepolia") {
     console.log("Waiting for 5 block confirmations...");
-    await contract.deployTransaction.wait(5);
+    await deploymentTx.wait(5);
     console.log("5 blocks confirmed!");
     console.log("===========================================");
 
-    // ── STEP 4: Verify on Etherscan (Sepolia only) ───────────────────────────
     console.log("Verifying contract on Sepolia Etherscan...");
+
     try {
       await run("verify:verify", {
-        address: contract.address,
+        address: contractAddress,
         constructorArguments: [],
       });
+
       console.log("Contract verified on Etherscan!");
-      console.log("Etherscan URL: https://sepolia.etherscan.io/address/" 
-        + contract.address);
+      console.log(
+        "Etherscan URL: https://sepolia.etherscan.io/address/" +
+          contractAddress
+      );
     } catch (err) {
       if (err.message.includes("already verified")) {
         console.log("Already verified on Etherscan.");
@@ -52,21 +55,21 @@ async function main() {
         console.error("Verification failed:", err.message);
       }
     }
+
     console.log("===========================================");
   }
 
-  // ── STEP 5: Print deployment summary ────────────────────────────────────────
-  console.log("\n DEPLOYMENT SUMMARY");
+  console.log("\nDEPLOYMENT SUMMARY");
   console.log("===========================================");
   console.log("Contract Name    : PrescriptionRegistry");
   console.log("Network          :", network.name);
-  console.log("Contract Address :", contract.address);
+  console.log("Contract Address :", contractAddress);
   console.log("Deployer Address :", deployer.address);
   console.log("Deployed At      :", new Date().toISOString());
   console.log("===========================================");
-  console.log("\n ACTION REQUIRED:");
-  console.log("Copy this address into frontend/src/config/contract.js:");
-  console.log("CONTRACT_ADDRESS =", `"${contract.address}"`);
+  console.log("\nACTION REQUIRED:");
+  console.log("Copy this address into frontend/.env:");
+  console.log(`VITE_CONTRACT_ADDRESS=${contractAddress}`);
   console.log("===========================================\n");
 }
 
