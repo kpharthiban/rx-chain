@@ -4,6 +4,7 @@ import { Shield, Menu, X, Wifi, WifiOff, LogOut } from "lucide-react";
 import Button from "./Button";
 import useWallet from "../hooks/useWallet";
 import useRoles from "../hooks/useRoles";
+import NetworkWarning from "./NetworkWarning";
 
 const SEPOLIA_CHAIN_ID = "0xaa36a7";
 const ADMIN_WALLET = "0x0000000000000000000000000000000000000000";
@@ -110,6 +111,8 @@ export default function Navbar() {
           </button>
         </div>
       </div>
+
+      <NetworkWarning />
 
       {mobileOpen && (
         <div className="animate-slide-up border-t border-slate-200/80 bg-white px-4 pb-4 pt-3 md:hidden">
