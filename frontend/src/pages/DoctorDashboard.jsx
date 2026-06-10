@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { ethers } from "ethers";
 import {
   FileText,
   Activity,
@@ -9,6 +10,7 @@ import {
   XCircle,
   Wallet,
   UploadCloud,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -19,22 +21,121 @@ import PageHeader from "../components/PageHeader";
 import StatCard from "../components/StatCard";
 import TxStatus from "../components/TxStatus";
 import useWallet from "../hooks/useWallet";
+import { getContract } from "../utils/detectRole";
 import { uploadPrescriptionToIPFS } from "../utils/ipfs";
 
-const mockPrescriptions = [
-  { id: "#001", patient: "0xAB...123", expiry: "5 Jun 2026", status: "active" },
-  { id: "#002", patient: "0xCD...456", expiry: "3 Jun 2026", status: "dispensed" },
-  { id: "#003", patient: "0xEF...789", expiry: "1 Jun 2026", status: "revoked" },
-];
+const REVERT_MESSAGES = {
+  "Invalid patient address": "Please enter a valid patient wallet address.",
+  "Patient address is zero": "Please enter a valid patient wallet address.",
+  "Prescription does not exist": "Prescription not found.",
+  "Not the issuing doctor": "You did not issue this prescription.",
+  "Only the issuing doctor or admin can revoke": "You did not issue this prescription.",
+  "Already revoked": "This prescription is already revoked.",
+  "Prescription is already revoked": "This prescription is already revoked.",
+  "Expiry too far": "Expiry date cannot be more than 30 days from today.",
+  "Expiry exceeds maximum validity of 30 days": "Expiry date cannot be more than 30 days from today.",
+};
+
+function translateRevert(err) {
+  if (err.reason && REVERT_MESSAGES[err.reason]) {
+    return REVERT_MESSAGES[err.reason];
+  }
+  if (err.reason) return err.reason;
+  if (err.code === 4001 || err.code === "ACTION_REJECTED") {
+    return "Transaction rejected. You cancelled the MetaMask request.";
+  }
+  if (err.message && err.message.includes("insufficient funds")) {
+    return "Insufficient funds to cover gas. Top up your Sepolia ETH.";
+  }
+  return err.message || "An unknown error occurred.";
+}
+
+function shortenAddress(address) {
+  if (!address) return "-";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function deriveStatus(rx) {
+  if (rx.revoked) return "revoked";
+  if (rx.dispensed) return "dispensed";
+  if (Math.floor(Date.now() / 1000) > Number(rx.expiryTimestamp)) return "expired";
+  return "active";
+}
+
+function formatDate(timestamp) {
+  if (!timestamp) return "-";
+  const seconds = Number(timestamp.toString ? timestamp.toString() : timestamp);
+  if (!seconds) return "-";
+  return new Date(seconds * 1000).toLocaleDateString("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 export default function DoctorDashboard() {
-  const { account, connectWallet, getRoleRedirectPath } = useWallet();
+  const { account, provider, connectWallet, getRoleRedirectPath } = useWallet();
   const navigate = useNavigate();
 
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
   const [confirmingRevoke, setConfirmingRevoke] = useState(null);
-  const [prescriptions, setPrescriptions] = useState(mockPrescriptions);
+  const [prescriptions, setPrescriptions] = useState([]);
+  const [loadingList, setLoadingList] = useState(false);
+
+  const [patientAddress, setPatientAddress] = useState("");
+  const [drugName, setDrugName] = useState("");
+  const [dosage, setDosage] = useState("");
+  const [frequency, setFrequency] = useState("");
+  const [duration, setDuration] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+
+  const loadPrescriptions = useCallback(async () => {
+    if (!provider || !account) return;
+
+    try {
+      setLoadingList(true);
+      const contract = getContract(provider);
+
+      const events = await contract.queryFilter(
+        contract.filters.PrescriptionIssued(null, account, null, null)
+      );
+
+      const items = [];
+      for (const ev of events) {
+        const id = ev.args.prescriptionId ?? ev.args[0];
+        try {
+          const rx = await contract.getPrescription(id);
+          items.push({
+            id: Number(id),
+            patient: rx.patient,
+            expiryTimestamp: rx.expiryTimestamp,
+            expiry: formatDate(rx.expiryTimestamp),
+            dispensed: rx.dispensed,
+            revoked: rx.revoked,
+            status: deriveStatus(rx),
+          });
+        } catch {
+          // skip prescriptions that fail to load
+        }
+      }
+
+      setPrescriptions(items);
+    } catch (error) {
+      console.error("Failed to load prescriptions:", error);
+    } finally {
+      setLoadingList(false);
+    }
+  }, [provider, account]);
+
+  useEffect(() => {
+    loadPrescriptions();
+  }, [loadPrescriptions]);
+
+  const totalIssued = prescriptions.length;
+  const activeCount = prescriptions.filter((rx) => rx.status === "active").length;
+  const dispensedCount = prescriptions.filter((rx) => rx.status === "dispensed").length;
+  const revokedCount = prescriptions.filter((rx) => rx.status === "revoked").length;
 
   const testIPFSUpload = async () => {
     try {
@@ -105,32 +206,99 @@ export default function DoctorDashboard() {
     );
   }
 
-  const handleIssue = (e) => {
+  const handleIssue = async (e) => {
     e.preventDefault();
 
-    setTxStatus("pending");
-    setTxMessage("Issuing prescription — waiting for MetaMask confirmation...");
+    if (!ethers.utils.isAddress(patientAddress)) {
+      setTxStatus("failed");
+      setTxMessage("Please enter a valid patient wallet address.");
+      return;
+    }
 
-    setTimeout(() => {
-      setTxStatus("confirmed");
-      setTxMessage("Prescription issued successfully. ID: #004");
-    }, 1000);
-  };
+    if (!drugName.trim() || !dosage.trim() || !frequency.trim() || !duration.trim() || !expiryDate) {
+      setTxStatus("failed");
+      setTxMessage("All fields are required.");
+      return;
+    }
 
-  const handleRevoke = (id) => {
-    setConfirmingRevoke(null);
+    const expiryTimestamp = Math.floor(new Date(expiryDate).getTime() / 1000);
+    const now = Math.floor(Date.now() / 1000);
+    if (expiryTimestamp <= now) {
+      setTxStatus("failed");
+      setTxMessage("Expiry date must be in the future.");
+      return;
+    }
+    if (expiryTimestamp > now + 30 * 24 * 60 * 60) {
+      setTxStatus("failed");
+      setTxMessage("Expiry date cannot be more than 30 days from today.");
+      return;
+    }
 
-    setTxStatus("pending");
-    setTxMessage(`Revoking prescription ${id} — waiting for MetaMask confirmation...`);
+    const combinedString = `${drugName}|${dosage}|${frequency}|${duration}`;
+    const dataHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(combinedString));
 
-    setTimeout(() => {
-      setPrescriptions((prev) =>
-        prev.map((rx) => (rx.id === id ? { ...rx, status: "revoked" } : rx))
+    try {
+      setTxStatus("pending");
+      setTxMessage("Issuing prescription — waiting for MetaMask confirmation...");
+
+      const contract = getContract(provider);
+      const tx = await contract.issuePrescription(
+        patientAddress,
+        dataHash,
+        "PENDING_IPFS",
+        expiryTimestamp
       );
 
+      setTxMessage("Transaction submitted. Waiting for confirmation...");
+      const receipt = await tx.wait();
+
+      const event = receipt.events?.find((ev) => ev.event === "PrescriptionIssued");
+      const newId = event ? Number(event.args.prescriptionId ?? event.args[0]) : null;
+
       setTxStatus("confirmed");
-      setTxMessage(`Prescription ${id} revoked successfully.`);
-    }, 1000);
+      setTxMessage(
+        newId != null
+          ? `Prescription issued successfully. ID: #${newId}`
+          : "Prescription issued successfully."
+      );
+
+      setPatientAddress("");
+      setDrugName("");
+      setDosage("");
+      setFrequency("");
+      setDuration("");
+      setExpiryDate("");
+
+      await loadPrescriptions();
+    } catch (err) {
+      console.error("Issue prescription failed:", err);
+      setTxStatus("failed");
+      setTxMessage(translateRevert(err));
+    }
+  };
+
+  const handleRevoke = async (id) => {
+    setConfirmingRevoke(null);
+
+    try {
+      setTxStatus("pending");
+      setTxMessage(`Revoking prescription #${id} — waiting for MetaMask confirmation...`);
+
+      const contract = getContract(provider);
+      const tx = await contract.revokePrescription(id);
+
+      setTxMessage("Transaction submitted. Waiting for confirmation...");
+      await tx.wait();
+
+      setTxStatus("confirmed");
+      setTxMessage(`Prescription #${id} revoked successfully.`);
+
+      await loadPrescriptions();
+    } catch (err) {
+      console.error("Revoke failed:", err);
+      setTxStatus("failed");
+      setTxMessage(translateRevert(err));
+    }
   };
 
   return (
@@ -144,28 +312,28 @@ export default function DoctorDashboard() {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:mb-8 sm:gap-4 lg:grid-cols-4">
         <StatCard
           label="Total Issued"
-          value="12"
+          value={String(totalIssued)}
           icon={<FileText size={18} />}
           color="brand"
         />
 
         <StatCard
           label="Active"
-          value="7"
+          value={String(activeCount)}
           icon={<Activity size={18} />}
           color="emerald"
         />
 
         <StatCard
           label="Dispensed"
-          value="4"
+          value={String(dispensedCount)}
           icon={<CheckCircle size={18} />}
           color="sky"
         />
 
         <StatCard
           label="Revoked"
-          value="1"
+          value={String(revokedCount)}
           icon={<Ban size={18} />}
           color="red"
         />
@@ -196,6 +364,8 @@ export default function DoctorDashboard() {
             <FormField label="Patient Wallet Address">
               <input
                 placeholder="0x..."
+                value={patientAddress}
+                onChange={(e) => setPatientAddress(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </FormField>
@@ -203,13 +373,35 @@ export default function DoctorDashboard() {
             <FormField label="Drug Name">
               <input
                 placeholder="e.g. Ritalin 10mg"
+                value={drugName}
+                onChange={(e) => setDrugName(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </FormField>
 
-            <FormField label="Dosage / Frequency">
+            <FormField label="Dosage">
               <input
-                placeholder="e.g. 1 tablet, once daily"
+                placeholder="e.g. 1 tablet"
+                value={dosage}
+                onChange={(e) => setDosage(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </FormField>
+
+            <FormField label="Frequency">
+              <input
+                placeholder="e.g. once daily"
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              />
+            </FormField>
+
+            <FormField label="Duration">
+              <input
+                placeholder="e.g. 7 days"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </FormField>
@@ -217,14 +409,8 @@ export default function DoctorDashboard() {
             <FormField label="Expiry Date">
               <input
                 type="date"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-              />
-            </FormField>
-
-            <FormField label="Additional Notes">
-              <textarea
-                rows={3}
-                placeholder="Extra notes stored off-chain (IPFS)"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </FormField>
@@ -239,9 +425,20 @@ export default function DoctorDashboard() {
         </Card>
 
         <Card>
-          <h2 className="mb-5 text-lg font-bold text-slate-900">
-            Prescriptions Issued
-          </h2>
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">
+              Prescriptions Issued
+            </h2>
+
+            <button
+              onClick={loadPrescriptions}
+              disabled={loadingList}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />
+              {loadingList ? "Loading..." : "Refresh"}
+            </button>
+          </div>
 
           {prescriptions.length > 0 ? (
             <div className="space-y-3">
@@ -252,10 +449,10 @@ export default function DoctorDashboard() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-semibold text-slate-900">{rx.id}</p>
+                      <p className="font-semibold text-slate-900">#{rx.id}</p>
 
                       <p className="mt-0.5 text-sm text-slate-500">
-                        Patient: {rx.patient}
+                        Patient: {shortenAddress(rx.patient)}
                       </p>
 
                       <p className="text-sm text-slate-500">

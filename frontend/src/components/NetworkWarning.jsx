@@ -55,12 +55,12 @@ export default function NetworkWarning() {
       <div className="flex items-center gap-2 text-sm font-medium text-red-700">
         <AlertTriangle size={15} className="shrink-0" />
         <span>
-          Wrong network detected.{" "}
+          Wrong network. Please switch MetaMask to Sepolia Testnet, Hardhat Local (chainId 31337), or Ganache (chainId 1337).{" "}
           <button
             onClick={handleSwitch}
             className="underline underline-offset-2 hover:text-red-900"
           >
-            Switch to Sepolia Testnet
+            Switch to Sepolia
           </button>
         </span>
       </div>

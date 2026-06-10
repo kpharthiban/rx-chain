@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   ClipboardList,
@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Wallet,
   QrCode,
+  RefreshCw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Card from "../components/Card";
@@ -13,40 +14,75 @@ import Badge from "../components/Badge";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
 import useWallet from "../hooks/useWallet";
+import { getContract } from "../utils/detectRole";
+import { CONTRACT_ADDRESS } from "../config/contract";
 
-const prescriptions = [
-  {
-    id: "001",
-    doctor: "Dr. Ahmad",
-    drug: "Ritalin 10mg",
-    dosage: "1 tablet, once daily",
-    expiry: "5 Jun 2026",
-    issuedAt: "22 May 2026",
-    status: "active",
-  },
-  {
-    id: "002",
-    doctor: "Dr. Siti",
-    drug: "Amoxicillin 500mg",
-    dosage: "1 capsule, 3x daily",
-    expiry: "3 Jun 2026",
-    issuedAt: "20 May 2026",
-    status: "dispensed",
-  },
-  {
-    id: "003",
-    doctor: "Dr. Ahmad",
-    drug: "Ritalin 10mg",
-    dosage: "1 tablet, once daily",
-    expiry: "30 May 2026",
-    issuedAt: "15 May 2026",
-    status: "revoked",
-  },
-];
+function formatDate(timestamp) {
+  const seconds = Number(timestamp.toString ? timestamp.toString() : timestamp);
+  if (!seconds) return "-";
+  return new Date(seconds * 1000).toLocaleDateString("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function deriveStatus(rx) {
+  if (rx.revoked) return "revoked";
+  if (rx.dispensed) return "dispensed";
+  const expiry = Number(rx.expiryTimestamp.toString ? rx.expiryTimestamp.toString() : rx.expiryTimestamp);
+  if (Date.now() / 1000 > expiry) return "expired";
+  return "active";
+}
 
 export default function PatientView() {
-  const { account, connectWallet, getRoleRedirectPath } = useWallet();
+  const { account, provider, connectWallet, getRoleRedirectPath } = useWallet();
   const navigate = useNavigate();
+
+  const [prescriptions, setPrescriptions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const loadPrescriptions = async () => {
+    if (!provider || !account) return;
+    try {
+      setLoading(true);
+      setError("");
+      const contract = getContract(provider);
+      const ids = await contract.getMyPrescriptions();
+
+      if (ids.length === 0) {
+        setPrescriptions([]);
+        return;
+      }
+
+      const results = await Promise.all(
+        ids.map((id) => contract.getPrescription(id).then((data) => ({ id, data })))
+      );
+
+      const list = results.map(({ id, data }) => ({
+        id: id.toString(),
+        doctor: data.doctorName || data.doctor,
+        drug: data.drugName || data.drug,
+        dosage: data.dosage,
+        issuedAt: formatDate(data.issuedTimestamp || data.issuedAt),
+        expiry: formatDate(data.expiryTimestamp || data.expiry),
+        status: deriveStatus(data),
+      }));
+
+      setPrescriptions(list);
+    } catch (err) {
+      console.error("Failed to load prescriptions:", err);
+      setError(err.reason || err.message || "Failed to load prescriptions.");
+      setPrescriptions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPrescriptions();
+  }, [provider, account]);
 
   return (
     <div className="animate-fade-in-up">
@@ -79,21 +115,46 @@ export default function PatientView() {
         </Card>
       ) : (
         <div className="space-y-5">
-          <Card className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
-              <Wallet size={18} />
+          <Card className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <Wallet size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-slate-500">
+                  Connected Patient Wallet
+                </p>
+                <p className="font-mono text-sm font-semibold text-slate-900">
+                  {account}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">
-                Connected Patient Wallet
-              </p>
-              <p className="font-mono text-sm font-semibold text-slate-900">
-                {account}
-              </p>
-            </div>
+            <button
+              onClick={loadPrescriptions}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              {loading ? "Loading..." : "Refresh"}
+            </button>
           </Card>
 
-          {prescriptions.length > 0 ? (
+          {error && (
+            <Card className="border-l-4 border-l-red-400 text-sm text-red-600">
+              {error}
+            </Card>
+          )}
+
+          {loading ? (
+            <Card className="text-center">
+              <div className="flex flex-col items-center py-8">
+                <RefreshCw size={24} className="animate-spin text-slate-400" />
+                <p className="mt-3 text-sm text-slate-500">
+                  Loading prescriptions from smart contract...
+                </p>
+              </div>
+            </Card>
+          ) : prescriptions.length > 0 ? (
             prescriptions.map((rx) => (
               <PrescriptionCard key={rx.id} rx={rx} />
             ))
@@ -129,7 +190,9 @@ function PrescriptionCard({ rx }) {
       ? "border-l-emerald-400"
       : rx.status === "dispensed"
         ? "border-l-sky-400"
-        : "border-l-red-400";
+        : rx.status === "expired"
+          ? "border-l-amber-400"
+          : "border-l-red-400";
 
   return (
     <Card className={`border-l-4 p-4 sm:p-6 ${borderAccent}`}>
@@ -168,7 +231,7 @@ function PrescriptionCard({ rx }) {
 
         {rx.status === "active" && (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-4">
-            <QRCodeCanvas value={rx.id} size={110} level="M" />
+            <QRCodeCanvas value={JSON.stringify({ prescriptionId: rx.id, contract: CONTRACT_ADDRESS })} size={110} level="M" />
             <span className="flex items-center gap-1 text-xs text-slate-400">
               <QrCode size={12} />
               Scan to verify

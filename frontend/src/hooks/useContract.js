@@ -37,10 +37,7 @@ const useContract = () => {
     }
 
     // Guard: contract not yet deployed (address is still the placeholder)
-    if (
-      !CONTRACT_ADDRESS ||
-      CONTRACT_ADDRESS === "PASTE_DEPLOYED_CONTRACT_ADDRESS_HERE"
-    ) {
+    if (!CONTRACT_ADDRESS) {
       setError("Contract not deployed yet — update CONTRACT_ADDRESS in config/contract.js.");
       return;
     }

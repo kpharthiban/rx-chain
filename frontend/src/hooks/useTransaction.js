@@ -55,8 +55,8 @@ const useTransaction = () => {
         setError("Transaction rejected. You cancelled the MetaMask request.");
       }
       // Contract reverted with a require() message
-      else if (err.reason) {
-        setError("Transaction failed: " + err.reason);
+      else if (err.reason || err.data?.message) {
+        setError("Transaction failed: " + (err.reason || err.data.message));
       }
       // Insufficient funds / gas estimation failed
       else if (err.message && err.message.includes("insufficient funds")) {

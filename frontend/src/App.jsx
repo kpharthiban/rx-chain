@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link, Navigate } from "react-router-dom";
 import { FileQuestion } from "lucide-react";
 
 import Navbar from "./components/Navbar";
+import NetworkWarning from "./components/NetworkWarning";
 import Button from "./components/Button";
 import useWallet from "./hooks/useWallet";
 import { detectRole, getContract } from "./utils/detectRole";
@@ -94,6 +95,7 @@ export default function App() {
     <BrowserRouter>
       <div className="flex min-h-screen flex-col bg-[#f8fafb]">
         <Navbar role={role} roleLoading={roleLoading} />
+        <NetworkWarning />
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
           <Routes>
