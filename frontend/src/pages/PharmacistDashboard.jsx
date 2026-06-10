@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Search,
   Pill,
@@ -15,12 +15,7 @@ import Badge from "../components/Badge";
 import PageHeader from "../components/PageHeader";
 import TxStatus from "../components/TxStatus";
 import useWallet from "../hooks/useWallet";
-
-const mockHistory = [
-  { id: "#002", doctor: "Dr. Siti", date: "4 Jun 2026" },
-  { id: "#005", doctor: "Dr. Ahmad", date: "2 Jun 2026" },
-  { id: "#007", doctor: "Dr. Lee", date: "1 Jun 2026" },
-];
+import { getContract } from "../utils/detectRole";
 
 const statusConfig = {
   valid: {
@@ -29,7 +24,7 @@ const statusConfig = {
     icon: <CheckCircle2 size={20} className="text-emerald-600" />,
     heading: "text-emerald-900",
     text: "text-emerald-800",
-    label: "Valid",
+    label: "Valid — Ready to Dispense",
   },
   expired: {
     border: "border-orange-200",
@@ -55,34 +50,184 @@ const statusConfig = {
     text: "text-red-800",
     label: "Revoked",
   },
+  notfound: {
+    border: "border-red-200",
+    bg: "bg-red-50",
+    icon: <XCircle size={20} className="text-red-600" />,
+    heading: "text-red-900",
+    text: "text-red-800",
+    label: "Not Found",
+  },
 };
 
+function shortenAddress(address) {
+  if (!address) return "-";
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function formatDate(timestamp) {
+  if (!timestamp) return "-";
+  const seconds = Number(timestamp.toString ? timestamp.toString() : timestamp);
+  if (!seconds) return "-";
+  return new Date(seconds * 1000).toLocaleDateString("en-MY", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 export default function PharmacistDashboard() {
-  const { account, connectWallet, getRoleRedirectPath } = useWallet();
+  const { account, provider, connectWallet, getRoleRedirectPath } = useWallet();
   const navigate = useNavigate();
   const [rxId, setRxId] = useState("");
   const [result, setResult] = useState(null);
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
+  const [history, setHistory] = useState([]);
 
-  const verifyPrescription = () => {
+  useEffect(() => {
+    if (!provider || !account) return;
+
+    const loadHistory = async () => {
+      try {
+        const contract = getContract(provider);
+        const filter = contract.filters.PrescriptionDispensed(null, account, null);
+        const events = await contract.queryFilter(filter);
+        setHistory(
+          events.map((ev) => ({
+            id: ev.args.prescriptionId != null
+              ? ev.args.prescriptionId.toString()
+              : ev.args[0].toString(),
+            timestamp: ev.args.timestamp
+              ? formatDate(ev.args.timestamp)
+              : ev.args[2]
+                ? formatDate(ev.args[2])
+                : "-",
+          }))
+        );
+      } catch (err) {
+        console.error("Failed to load dispensing history:", err);
+      }
+    };
+
+    loadHistory();
+  }, [provider, account]);
+
+  const verifyPrescription = async () => {
     if (!rxId.trim()) return;
-    setResult({
-      status: "valid",
-      doctor: "Dr. Ahmad",
-      drugHash: "0x91f2...ABCD",
-      patient: "0xAB12...7890",
-      expiry: "5 Jun 2026",
-    });
+
+    try {
+      setTxStatus("pending");
+      setTxMessage("Fetching prescription from the blockchain...");
+      setResult(null);
+
+      const contract = getContract(provider);
+      const rx = await contract.getPrescription(rxId.trim());
+
+      setTxStatus(null);
+      setTxMessage("");
+
+      if (!rx.issuedAt || rx.issuedAt.toNumber() === 0) {
+        setResult({ status: "notfound" });
+        return;
+      }
+
+      if (rx.revoked) {
+        setResult({
+          status: "revoked",
+          doctor: shortenAddress(rx.doctor),
+          patient: shortenAddress(rx.patient),
+          dataHash: rx.dataHash,
+          issued: formatDate(rx.issuedAt),
+          expiry: formatDate(rx.expiryTimestamp),
+        });
+        return;
+      }
+
+      if (rx.dispensed) {
+        setResult({
+          status: "dispensed",
+          doctor: shortenAddress(rx.doctor),
+          patient: shortenAddress(rx.patient),
+          dataHash: rx.dataHash,
+          issued: formatDate(rx.issuedAt),
+          expiry: formatDate(rx.expiryTimestamp),
+        });
+        return;
+      }
+
+      if (Date.now() / 1000 > rx.expiryTimestamp.toNumber()) {
+        setResult({
+          status: "expired",
+          doctor: shortenAddress(rx.doctor),
+          patient: shortenAddress(rx.patient),
+          dataHash: rx.dataHash,
+          issued: formatDate(rx.issuedAt),
+          expiry: formatDate(rx.expiryTimestamp),
+        });
+        return;
+      }
+
+      setResult({
+        status: "valid",
+        doctor: shortenAddress(rx.doctor),
+        patient: shortenAddress(rx.patient),
+        dataHash: rx.dataHash,
+        issued: formatDate(rx.issuedAt),
+        expiry: formatDate(rx.expiryTimestamp),
+      });
+    } catch (err) {
+      console.error("Verification failed:", err);
+      setTxStatus("failed");
+      setTxMessage(err.reason || err.message || "Failed to verify prescription.");
+      setResult(null);
+    }
   };
 
-  const dispensePrescription = () => {
-    setTxStatus("pending");
-    setTxMessage("Waiting for MetaMask confirmation...");
-    setTimeout(() => {
+  const dispensePrescription = async () => {
+    try {
+      const contract = getContract(provider);
+
+      setTxStatus("pending");
+      setTxMessage("Waiting for MetaMask confirmation...");
+
+      const tx = await contract.dispensePrescription(rxId.trim());
+
+      setTxMessage("Transaction submitted. Waiting for confirmation...");
+      await tx.wait();
+
       setTxStatus("confirmed");
       setTxMessage("Prescription has been marked as dispensed on-chain.");
-    }, 1000);
+
+      const rx = await contract.getPrescription(rxId.trim());
+      setResult({
+        status: "dispensed",
+        doctor: shortenAddress(rx.doctor),
+        patient: shortenAddress(rx.patient),
+        dataHash: rx.dataHash,
+        issued: formatDate(rx.issuedAt),
+        expiry: formatDate(rx.expiryTimestamp),
+      });
+
+      const filter = contract.filters.PrescriptionDispensed(null, account, null);
+      const events = await contract.queryFilter(filter);
+      setHistory(
+        events.map((ev) => ({
+          id: ev.args.prescriptionId != null
+            ? ev.args.prescriptionId.toString()
+            : ev.args[0].toString(),
+          timestamp: ev.args.timestamp
+            ? formatDate(ev.args.timestamp)
+            : ev.args[2]
+              ? formatDate(ev.args[2])
+              : "-",
+        }))
+      );
+    } catch (err) {
+      console.error("Dispense failed:", err);
+      setTxStatus("failed");
+      setTxMessage(err.reason || err.message || "Failed to dispense prescription.");
+    }
   };
 
   const cfg = result ? statusConfig[result.status] : null;
@@ -154,18 +299,23 @@ export default function PharmacistDashboard() {
                 <div className="flex items-center gap-2">
                   {cfg.icon}
                   <h3 className={`font-bold ${cfg.heading}`}>
-                    Prescription Found
+                    {result.status === "notfound"
+                      ? "No prescription found with this ID."
+                      : "Prescription Found"}
                   </h3>
                 </div>
                 <Badge type={result.status}>{cfg.label}</Badge>
               </div>
 
-              <div className="grid gap-2">
-                <InfoRow label="Doctor" value={result.doctor} className={cfg.text} />
-                <InfoRow label="Patient" value={result.patient} className={cfg.text} />
-                <InfoRow label="Drug Hash" value={result.drugHash} className={cfg.text} />
-                <InfoRow label="Expiry" value={result.expiry} className={cfg.text} />
-              </div>
+              {result.status !== "notfound" && (
+                <div className="grid gap-2">
+                  <InfoRow label="Doctor" value={result.doctor} className={cfg.text} />
+                  <InfoRow label="Patient" value={result.patient} className={cfg.text} />
+                  <InfoRow label="Drug Hash" value={result.dataHash} className={cfg.text} />
+                  <InfoRow label="Issued" value={result.issued} className={cfg.text} />
+                  <InfoRow label="Expiry" value={result.expiry} className={cfg.text} />
+                </div>
+              )}
 
               {result.status === "valid" && (
                 <Button
@@ -180,7 +330,19 @@ export default function PharmacistDashboard() {
 
               {result.status === "dispensed" && (
                 <p className="mt-4 text-sm font-medium text-sky-700">
-                  This prescription has already been dispensed and cannot be reused.
+                  This prescription has already been dispensed.
+                </p>
+              )}
+
+              {result.status === "revoked" && (
+                <p className="mt-4 text-sm font-medium text-red-700">
+                  This prescription was revoked by the issuing doctor.
+                </p>
+              )}
+
+              {result.status === "expired" && (
+                <p className="mt-4 text-sm font-medium text-orange-700">
+                  This prescription has expired.
                 </p>
               )}
             </div>
@@ -194,9 +356,9 @@ export default function PharmacistDashboard() {
             Dispensing History
           </h2>
 
-          {mockHistory.length > 0 ? (
+          {history.length > 0 ? (
             <div className="space-y-3">
-              {mockHistory.map((item) => (
+              {history.map((item) => (
                 <div
                   key={item.id}
                   className="flex items-center justify-between rounded-xl border border-slate-200 p-4 transition-colors hover:bg-slate-50"
@@ -206,13 +368,12 @@ export default function PharmacistDashboard() {
                       <CheckCircle2 size={16} />
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">{item.id}</p>
-                      <p className="text-sm text-slate-500">{item.doctor}</p>
+                      <p className="font-semibold text-slate-900">#{item.id}</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <Badge type="dispensed">Dispensed</Badge>
-                    <p className="mt-1 text-xs text-slate-400">{item.date}</p>
+                    <p className="mt-1 text-xs text-slate-400">{item.timestamp}</p>
                   </div>
                 </div>
               ))}

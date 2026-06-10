@@ -62,7 +62,7 @@ export default function AdminPanel() {
   const [tab, setTab] = useState("doctors");
   const [doctorRequests, setDoctorRequests] = useState([]);
   const [pharmacyRequests, setPharmacyRequests] = useState([]);
-  const [verifiedEntities] = useState([]);
+  const [verifiedEntities, setVerifiedEntities] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [txStatus, setTxStatus] = useState(null);
@@ -84,6 +84,43 @@ export default function AdminPanel() {
       setDoctorRequests(doctors.map((item, index) => normalizeRequest(item, index)));
       setPharmacyRequests(
         pharmacies.map((item, index) => normalizeRequest(item, index))
+      );
+
+      const doctorEvents = await contract.queryFilter(contract.filters.DoctorApproved());
+      const pharmacyEvents = await contract.queryFilter(contract.filters.PharmacyApproved());
+
+      const verified = [
+        ...doctorEvents.map((ev) => ({
+          type: "doctor",
+          wallet: ev.args.doctor || ev.args[0],
+          name: ev.args.name || ev.args[1] || "Unknown",
+          address: ev.args.doctor || ev.args[0],
+        })),
+        ...pharmacyEvents.map((ev) => ({
+          type: "pharmacy",
+          wallet: shortenAddress(ev.args.pharmacy || ev.args[0]),
+          name: ev.args.name || ev.args[1] || "Unknown",
+          address: ev.args.pharmacy || ev.args[0],
+        })),
+      ];
+
+      const doctorRole = await contract.DOCTOR_ROLE();
+      const pharmacyRole = await contract.PHARMACY_ROLE();
+
+      const activeVerified = [];
+      for (const entity of verified) {
+        const role = entity.type === "doctor" ? doctorRole : pharmacyRole;
+        const hasRole = await contract.hasRole(role, entity.address);
+        if (hasRole) {
+          activeVerified.push(entity);
+        }
+      }
+
+      setVerifiedEntities(
+        activeVerified.map((e) => ({
+          ...e,
+          wallet: shortenAddress(e.address),
+        }))
       );
     } catch (error) {
       console.error("Failed to load requests:", error);
@@ -156,6 +193,33 @@ export default function AdminPanel() {
       console.error("Rejection failed:", error);
       setTxStatus("failed");
       setTxMessage(error.reason || error.message || "Rejection failed.");
+    }
+  };
+
+  const handleRevoke = async (entity) => {
+    try {
+      const contract = getContract(provider);
+
+      setTxStatus("pending");
+      setTxMessage(`Revoking ${entity.name}. Please confirm in MetaMask...`);
+
+      const tx =
+        entity.type === "doctor"
+          ? await contract.revokeDoctor(entity.address)
+          : await contract.revokePharmacy(entity.address);
+
+      setTxMessage("Transaction submitted. Waiting for confirmation...");
+
+      await tx.wait();
+
+      setTxStatus("confirmed");
+      setTxMessage(`${entity.name} revoked successfully.`);
+
+      await loadRequests();
+    } catch (error) {
+      console.error("Revocation failed:", error);
+      setTxStatus("failed");
+      setTxMessage(error.reason || error.message || "Revocation failed.");
     }
   };
 
@@ -409,16 +473,17 @@ export default function AdminPanel() {
                     </div>
 
                     <button
+                      onClick={() => handleRevoke(entity)}
                       className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200 transition-colors hover:bg-red-100 sm:w-auto"
                     >
                       <Ban size={14} />
-                      Revoke
+                      Revoke {entity.type === "doctor" ? "Doctor" : "Pharmacy"}
                     </button>
                   </div>
                 ))}
               </div>
             ) : (
-              <EmptyState message="Verified doctors/pharmacies list is not connected yet." />
+              <EmptyState message="No verified doctors or pharmacies found on the smart contract." />
             )}
           </div>
         )}

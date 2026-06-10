@@ -1,7 +1,7 @@
 // src/config/contract.js
-import PrescriptionRegistryABI from "./PrescriptionRegistryABI.json";
+import PrescriptionRegistryABI from "./PrescriptionRegistry.json";
 
-export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
+export const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS;
 
 export const CONTRACT_ABI = PrescriptionRegistryABI.abi || PrescriptionRegistryABI;
 
@@ -16,7 +16,7 @@ export const NETWORK = {
     symbol: "ETH",
     decimals: 18,
   },
-  rpcUrls: ["https://sepolia.infura.io/v3/YOUR_INFURA_KEY"],
+  rpcUrls: ["https://sepolia.infura.io/v3/YOUR_INFURA_KEY"], // Replace with your own Infura/Alchemy key or use MetaMask provider directly
   blockExplorerUrls: ["https://sepolia.etherscan.io"],
 };
 

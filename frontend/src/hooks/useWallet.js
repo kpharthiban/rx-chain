@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { ethers } from "ethers";
 
-const SEPOLIA_CHAIN_ID = "0xaa36a7";
+const ACCEPTED_CHAIN_IDS = [
+  "0xaa36a7", // Sepolia (11155111)
+  "0x7a69",   // Hardhat local (31337)
+  "0x539",    // Ganache (1337)
+];
 
 const useWallet = () => {
   const [account, setAccount] = useState(null);
@@ -10,7 +14,7 @@ const useWallet = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState(null);
 
-  const isWrongNetwork = account && chainId && chainId !== SEPOLIA_CHAIN_ID;
+  const isWrongNetwork = account && chainId && !ACCEPTED_CHAIN_IDS.includes(chainId);
 
   const setupProvider = useCallback(() => {
     if (!window.ethereum) return null;
@@ -125,8 +129,17 @@ const useWallet = () => {
     setError(null);
   }, []);
 
-  const getRoleRedirectPath = useCallback(() => {
-    return "/patient";
+  const getRoleRedirectPath = useCallback((role) => {
+    switch (role) {
+      case "admin":
+        return "/admin";
+      case "doctor":
+        return "/doctor";
+      case "pharmacy":
+        return "/pharmacist";
+      default:
+        return "/patient";
+    }
   }, []);
 
   return {
