@@ -6,10 +6,11 @@ import Button from "./Button";
 import useWallet from "../hooks/useWallet";
 import NetworkWarning from "./NetworkWarning";
 
-const SEPOLIA_CHAIN_ID = "0xaa36a7";
+// const SEPOLIA_CHAIN_ID = "0xaa36a7";
 
 export default function Navbar({ role = "patient", roleLoading = false }) {
-  const { account, chainId, connectWallet, disconnectWallet } = useWallet();
+  // const { account, chainId, connectWallet, disconnectWallet } = useWallet();
+  const { account, chainId, connectWallet, disconnectWallet, isWrongNetwork } = useWallet(); // 1
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const location = useLocation();
@@ -19,7 +20,7 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
     ? `${account.slice(0, 6)}...${account.slice(-4)}`
     : "";
 
-  const isWrongNetwork = account && chainId && chainId !== SEPOLIA_CHAIN_ID;
+  // const isWrongNetwork = account && chainId && chainId !== SEPOLIA_CHAIN_ID;
 
   const links = getLinksForRole(role);
 
@@ -99,8 +100,8 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
               ) : (
                 <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
                   <Wifi size={12} />
-                  Sepolia
-                </span>
+                  {({ "0xaa36a7": "Sepolia", "0x7a69": "Hardhat", "0x539": "Ganache" })[chainId] || "Connected"}
+                </span> // 2
               )}
             </div>
           )}
@@ -149,8 +150,8 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
           {account && !isWrongNetwork && (
             <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
               <Wifi size={12} />
-              Connected to Sepolia
-            </div>
+              Connected to {({ "0xaa36a7": "Sepolia", "0x7a69": "Hardhat", "0x539": "Ganache" })[chainId] || "Network"}
+            </div> //3
           )}
 
           <div className="mb-3 rounded-lg bg-brand-50 px-3 py-2 text-xs font-semibold capitalize text-brand-700">
