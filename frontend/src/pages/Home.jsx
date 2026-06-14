@@ -60,7 +60,7 @@ const steps = [
   },
 ];
 
-export default function Home() {
+export default function Home({ role }) {
   const { account, connectWallet, getRoleRedirectPath } = useWallet();
   const navigate = useNavigate();
 
@@ -91,27 +91,63 @@ export default function Home() {
 
               <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
                 {account ? (
-                  <Link to={getRoleRedirectPath()}>
-                    <HeroButton>
-                      Open Dashboard
+                  <>
+                    {role === "admin" && (
+                      <Link to="/admin">
+                        <HeroButton>
+                          Open Admin Panel
+                          <ArrowRight size={16} />
+                        </HeroButton>
+                      </Link>
+                    )}
+                    {role === "doctor" && (
+                      <Link to="/doctor">
+                        <HeroButton>
+                          Open Doctor Dashboard
+                          <ArrowRight size={16} />
+                        </HeroButton>
+                      </Link>
+                    )}
+                    {role === "pharmacy" && (
+                      <Link to="/pharmacist">
+                        <HeroButton>
+                          Open Pharmacist Dashboard
+                          <ArrowRight size={16} />
+                        </HeroButton>
+                      </Link>
+                    )}
+                    {role === "patient" && (
+                      <>
+                        <Link to="/patient">
+                          <HeroButton>
+                            View My Prescriptions
+                            <ArrowRight size={16} />
+                          </HeroButton>
+                        </Link>
+                        <Link to="/register">
+                          <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/20 active:scale-[0.97] sm:w-auto">
+                            Register as Doctor / Pharmacy
+                          </button>
+                        </Link>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <HeroButton onClick={async () => {
+                      const addr = await connectWallet();
+                      if (addr) navigate(getRoleRedirectPath());
+                    }}>
+                      Connect MetaMask
                       <ArrowRight size={16} />
                     </HeroButton>
-                  </Link>
-                ) : (
-                  <HeroButton onClick={async () => {
-                    const addr = await connectWallet();
-                    if (addr) navigate(getRoleRedirectPath());
-                  }}>
-                    Connect MetaMask
-                    <ArrowRight size={16} />
-                  </HeroButton>
+                    <Link to="/register">
+                      <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/20 active:scale-[0.97] sm:w-auto">
+                        Register as Doctor / Pharmacy
+                      </button>
+                    </Link>
+                  </>
                 )}
-
-                <Link to="/register">
-                  <button className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/30 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition-all duration-200 hover:bg-white/20 active:scale-[0.97] sm:w-auto">
-                    Register as Doctor / Pharmacy
-                  </button>
-                </Link>
               </div>
             </div>
 
@@ -217,18 +253,53 @@ export default function Home() {
             Ready to get started?
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Connect your MetaMask wallet to register as a doctor or pharmacy, or
-            view your prescriptions.
+            {account
+              ? "Jump back into your dashboard."
+              : "Connect your MetaMask wallet to register as a doctor or pharmacy, or view your prescriptions."}
           </p>
           <div className="mt-5 flex flex-col justify-center gap-3 sm:mt-6 sm:flex-row">
-            <Link to="/register">
-              <Button className="w-full sm:w-auto">Register Now</Button>
-            </Link>
-            <Link to="/patient">
-              <Button variant="secondary" className="w-full sm:w-auto">
-                View Prescriptions
-              </Button>
-            </Link>
+            {account ? (
+              <>
+                {role === "admin" && (
+                  <Link to="/admin">
+                    <Button className="w-full sm:w-auto">Open Admin Panel</Button>
+                  </Link>
+                )}
+                {role === "doctor" && (
+                  <Link to="/doctor">
+                    <Button className="w-full sm:w-auto">Open Doctor Dashboard</Button>
+                  </Link>
+                )}
+                {role === "pharmacy" && (
+                  <Link to="/pharmacist">
+                    <Button className="w-full sm:w-auto">Open Pharmacist Dashboard</Button>
+                  </Link>
+                )}
+                {role === "patient" && (
+                  <>
+                    <Link to="/patient">
+                      <Button className="w-full sm:w-auto">View My Prescriptions</Button>
+                    </Link>
+                    <Link to="/register">
+                      <Button variant="secondary" className="w-full sm:w-auto">
+                        Register as Doctor / Pharmacy
+                      </Button>
+                    </Link>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <Link to="/register">
+                  <Button className="w-full sm:w-auto">Register Now</Button>
+                </Link>
+                <Link to="/patient">
+                  <Button variant="secondary" className="w-full sm:w-auto">
+                    View Prescriptions
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </section>

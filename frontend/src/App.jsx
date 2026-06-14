@@ -37,12 +37,15 @@ function NotFound() {
   );
 }
 
-function ProtectedRoute({ children, allowedRoles, role, account, roleLoading }) {
-  if (!account) {
-    return <Navigate to="/" replace />;
-  }
+function RegisterGuard({ role, children }) {
+  if (role === "admin") return <Navigate to="/admin" replace />;
+  if (role === "doctor") return <Navigate to="/doctor" replace />;
+  if (role === "pharmacy") return <Navigate to="/pharmacist" replace />;
+  return children;
+}
 
-  if (roleLoading) {
+function ProtectedRoute({ children, allowedRoles, role, account, appReady }) {
+  if (!appReady) {
     return (
       <div className="py-20 text-center">
         <p className="text-sm font-semibold text-slate-500">
@@ -50,6 +53,10 @@ function ProtectedRoute({ children, allowedRoles, role, account, roleLoading }) 
         </p>
       </div>
     );
+  }
+
+  if (!account) {
+    return <Navigate to="/" replace />;
   }
 
   if (!allowedRoles.includes(role)) {
@@ -60,47 +67,51 @@ function ProtectedRoute({ children, allowedRoles, role, account, roleLoading }) 
 }
 
 export default function App() {
-  const { account, provider } = useWallet();
+  const { account, provider, walletLoading } = useWallet();
 
   const [role, setRole] = useState("unregistered");
-  const [roleLoading, setRoleLoading] = useState(false);
+  const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
+    if (walletLoading) {
+      setAppReady(false);
+      return;
+    }
+
+    if (!account || !provider) {
+      setRole("unregistered");
+      setAppReady(true);
+      return;
+    }
+
+    setAppReady(false);
+
     async function loadRole() {
       try {
-        if (!account || !provider) {
-          setRole("unregistered");
-          return;
-        }
-
-        setRoleLoading(true);
-        
         const contract = getContract(provider);
         const detectedRole = await detectRole(contract, account);
-
-
         setRole(detectedRole);
       } catch (error) {
         console.error("Failed to detect role:", error);
         setRole("unregistered");
       } finally {
-        setRoleLoading(false);
+        setAppReady(true);
       }
     }
 
     loadRole();
-  }, [account, provider]);
+  }, [account, provider, walletLoading]);
 
   return (
     <BrowserRouter>
       <div className="flex min-h-screen flex-col bg-[#f8fafb]">
-        <Navbar role={role} roleLoading={roleLoading} />
+        <Navbar role={role} roleLoading={!appReady} />
         <NetworkWarning />
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
           <Routes>
             <Route path="/" element={<Home role={role} />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/register" element={<RegisterGuard role={role}><Register /></RegisterGuard>} />
 
             <Route
               path="/admin"
@@ -109,7 +120,7 @@ export default function App() {
                   allowedRoles={["admin"]}
                   role={role}
                   account={account}
-                  roleLoading={roleLoading}
+                  appReady={appReady}
                 >
                   <AdminPanel />
                 </ProtectedRoute>
@@ -123,7 +134,7 @@ export default function App() {
                   allowedRoles={["doctor"]}
                   role={role}
                   account={account}
-                  roleLoading={roleLoading}
+                  appReady={appReady}
                 >
                   <DoctorDashboard />
                 </ProtectedRoute>
@@ -137,7 +148,7 @@ export default function App() {
                   allowedRoles={["pharmacy"]}
                   role={role}
                   account={account}
-                  roleLoading={roleLoading}
+                  appReady={appReady}
                 >
                   <PharmacistDashboard />
                 </ProtectedRoute>
@@ -148,10 +159,10 @@ export default function App() {
               path="/patient"
               element={
                 <ProtectedRoute
-                  allowedRoles={["patient", "doctor", "pharmacy", "admin"]}
+                  allowedRoles={["patient"]}
                   role={role}
                   account={account}
-                  roleLoading={roleLoading}
+                  appReady={appReady}
                 >
                   <PatientView />
                 </ProtectedRoute>

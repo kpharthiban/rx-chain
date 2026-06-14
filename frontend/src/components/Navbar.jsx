@@ -195,28 +195,16 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
 
 function getLinksForRole(role) {
   if (role === "admin") {
-    return [
-      { to: "/admin", label: "Admin Panel" },
-      { to: "/patient", label: "Patient View" },
-    ];
+    return [{ to: "/admin", label: "Admin Panel" }];
   }
 
   if (role === "doctor") {
-    return [
-      { to: "/doctor", label: "Doctor Dashboard" },
-      { to: "/patient", label: "Patient View" },
-    ];
+    return [{ to: "/doctor", label: "Doctor Dashboard" }];
   }
 
   if (role === "pharmacy") {
-    return [
-      { to: "/pharmacist", label: "Pharmacist Dashboard" },
-      { to: "/patient", label: "Patient View" },
-    ];
+    return [{ to: "/pharmacist", label: "Pharmacist Dashboard" }];
   }
 
-  return [
-    { to: "/register", label: "Register" },
-    { to: "/patient", label: "Patient" },
-  ];
+  return [{ to: "/patient", label: "My Prescriptions" }];
 }

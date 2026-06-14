@@ -9,8 +9,8 @@ import {
   Send,
   XCircle,
   Wallet,
-  UploadCloud,
   RefreshCw,
+  Search,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -22,7 +22,8 @@ import StatCard from "../components/StatCard";
 import TxStatus from "../components/TxStatus";
 import useWallet from "../hooks/useWallet";
 import { getContract } from "../utils/detectRole";
-import { uploadPrescriptionToIPFS } from "../utils/ipfs";
+import { uploadPrescriptionToIPFS, fetchPrescriptionFromIPFS } from "../utils/ipfs";
+import formatRxId from "../utils/formatRxId";
 
 const REVERT_MESSAGES = {
   "Invalid patient address": "Please enter a valid patient wallet address.",
@@ -82,6 +83,7 @@ export default function DoctorDashboard() {
   const [confirmingRevoke, setConfirmingRevoke] = useState(null);
   const [prescriptions, setPrescriptions] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [patientAddress, setPatientAddress] = useState("");
   const [drugName, setDrugName] = useState("");
@@ -106,9 +108,21 @@ export default function DoctorDashboard() {
         const id = ev.args.prescriptionId ?? ev.args[0];
         try {
           const rx = await contract.getPrescription(id);
+
+          let drugName = "Unknown Drug";
+          if (rx.ipfsCID && rx.ipfsCID !== "PENDING_IPFS") {
+            try {
+              const ipfsData = await fetchPrescriptionFromIPFS(rx.ipfsCID);
+              if (ipfsData?.drugName) drugName = ipfsData.drugName;
+            } catch {
+              // ignore IPFS fetch failures
+            }
+          }
+
           items.push({
             id: Number(id),
             patient: rx.patient,
+            drugName,
             expiryTimestamp: rx.expiryTimestamp,
             expiry: formatDate(rx.expiryTimestamp),
             dispensed: rx.dispensed,
@@ -137,36 +151,17 @@ export default function DoctorDashboard() {
   const dispensedCount = prescriptions.filter((rx) => rx.status === "dispensed").length;
   const revokedCount = prescriptions.filter((rx) => rx.status === "revoked").length;
 
-  const testIPFSUpload = async () => {
-    try {
-      setTxStatus("pending");
-      setTxMessage("Uploading temporary prescription data to IPFS via Pinata...");
-
-      const testData = {
-        patientName: "Test Patient",
-        patientWallet: "0x0000000000000000000000000000000000000001",
-        drugName: "Ritalin 10mg",
-        dosage: "1 tablet daily",
-        frequency: "Once per day",
-        notes: "Temporary IPFS upload test from RxChain frontend",
-        createdAt: new Date().toISOString(),
-      };
-
-      const result = await uploadPrescriptionToIPFS(testData);
-
-      setTxStatus("confirmed");
-      setTxMessage(`IPFS upload successful. CID: ${result.cid}`);
-
-      alert(`IPFS upload successful!\nCID: ${result.cid}`);
-      console.log("IPFS upload result:", result);
-    } catch (error) {
-      setTxStatus("failed");
-      setTxMessage(error.message || "IPFS upload failed.");
-
-      alert(`IPFS upload failed: ${error.message}`);
-      console.error(error);
-    }
-  };
+  const filteredPrescriptions = prescriptions.filter((rx) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      String(rx.id).includes(q) ||
+      formatRxId(rx.id).toLowerCase().includes(q) ||
+      (rx.patient && rx.patient.toLowerCase().includes(q)) ||
+      (rx.drugName && rx.drugName.toLowerCase().includes(q)) ||
+      (rx.status && rx.status.toLowerCase().includes(q))
+    );
+  });
 
   if (!account) {
     return (
@@ -239,13 +234,29 @@ export default function DoctorDashboard() {
 
     try {
       setTxStatus("pending");
-      setTxMessage("Issuing prescription — waiting for MetaMask confirmation...");
+      setTxMessage("Uploading prescription data to IPFS...");
+
+      const prescriptionData = {
+        patientWallet: patientAddress,
+        drugName: drugName.trim(),
+        dosage: dosage.trim(),
+        frequency: frequency.trim(),
+        duration: duration.trim(),
+        expiryDate: expiryDate,
+        issuedBy: account,
+        issuedAt: new Date().toISOString(),
+      };
+
+      const ipfsResult = await uploadPrescriptionToIPFS(prescriptionData);
+      const ipfsCID = ipfsResult.cid;
+
+      setTxMessage("Prescription data uploaded. Please confirm transaction in MetaMask...");
 
       const contract = getContract(provider);
       const tx = await contract.issuePrescription(
         patientAddress,
         dataHash,
-        "PENDING_IPFS",
+        ipfsCID,
         expiryTimestamp
       );
 
@@ -258,7 +269,7 @@ export default function DoctorDashboard() {
       setTxStatus("confirmed");
       setTxMessage(
         newId != null
-          ? `Prescription issued successfully. ID: #${newId}`
+          ? `Prescription issued successfully. ID: ${formatRxId(newId)}`
           : "Prescription issued successfully."
       );
 
@@ -282,7 +293,7 @@ export default function DoctorDashboard() {
 
     try {
       setTxStatus("pending");
-      setTxMessage(`Revoking prescription #${id} — waiting for MetaMask confirmation...`);
+      setTxMessage(`Revoking prescription ${formatRxId(id)} — waiting for MetaMask confirmation...`);
 
       const contract = getContract(provider);
       const tx = await contract.revokePrescription(id);
@@ -291,7 +302,7 @@ export default function DoctorDashboard() {
       await tx.wait();
 
       setTxStatus("confirmed");
-      setTxMessage(`Prescription #${id} revoked successfully.`);
+      setTxMessage(`Prescription ${formatRxId(id)} revoked successfully.`);
 
       await loadPrescriptions();
     } catch (err) {
@@ -337,17 +348,6 @@ export default function DoctorDashboard() {
           icon={<Ban size={18} />}
           color="red"
         />
-      </div>
-
-      <div className="mb-6">
-        <button
-          type="button"
-          onClick={testIPFSUpload}
-          className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
-        >
-          <UploadCloud size={16} />
-          Test IPFS Upload
-        </button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -440,16 +440,29 @@ export default function DoctorDashboard() {
             </button>
           </div>
 
-          {prescriptions.length > 0 ? (
+          <div className="mb-4 relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search by ID, patient address, drug name, or status..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2.5 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            />
+          </div>
+
+          {filteredPrescriptions.length > 0 ? (
             <div className="space-y-3">
-              {prescriptions.map((rx) => (
+              {filteredPrescriptions.map((rx) => (
                 <div
                   key={rx.id}
                   className="rounded-xl border border-slate-200 p-4 transition-colors hover:bg-slate-50"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-semibold text-slate-900">#{rx.id}</p>
+                      <p className="font-semibold text-slate-900">
+                        Prescription {formatRxId(rx.id)} — {rx.drugName}
+                      </p>
 
                       <p className="mt-0.5 text-sm text-slate-500">
                         Patient: {shortenAddress(rx.patient)}
@@ -502,7 +515,7 @@ export default function DoctorDashboard() {
               ))}
             </div>
           ) : (
-            <EmptyState />
+            <EmptyState message={searchQuery ? "No prescriptions match your search." : undefined} />
           )}
         </Card>
       </div>
@@ -522,7 +535,7 @@ function FormField({ label, children }) {
   );
 }
 
-function EmptyState() {
+function EmptyState({ message }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-12 text-center">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
@@ -530,7 +543,7 @@ function EmptyState() {
       </div>
 
       <p className="mt-3 text-sm text-slate-500">
-        No prescriptions issued yet.
+        {message || "No prescriptions issued yet."}
       </p>
     </div>
   );

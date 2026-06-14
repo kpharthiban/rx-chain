@@ -7,15 +7,18 @@ import {
   Wallet,
   QrCode,
   RefreshCw,
+  Search,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Card from "../components/Card";
 import Badge from "../components/Badge";
 import Button from "../components/Button";
 import PageHeader from "../components/PageHeader";
 import useWallet from "../hooks/useWallet";
 import { getContract } from "../utils/detectRole";
+import { fetchPrescriptionFromIPFS } from "../utils/ipfs";
 import { CONTRACT_ADDRESS } from "../config/contract";
+import formatRxId from "../utils/formatRxId";
 
 function formatDate(timestamp) {
   const seconds = Number(timestamp.toString ? timestamp.toString() : timestamp);
@@ -42,6 +45,7 @@ export default function PatientView() {
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadPrescriptions = async () => {
     if (!provider || !account) return;
@@ -49,26 +53,46 @@ export default function PatientView() {
       setLoading(true);
       setError("");
       const contract = getContract(provider);
-      const ids = await contract.getMyPrescriptions();
 
-      if (ids.length === 0) {
+      const events = await contract.queryFilter(
+        contract.filters.PrescriptionIssued(null, null, account)
+      );
+
+      if (events.length === 0) {
         setPrescriptions([]);
         return;
       }
 
-      const results = await Promise.all(
-        ids.map((id) => contract.getPrescription(id).then((data) => ({ id, data })))
-      );
+      const list = [];
+      for (const ev of events) {
+        const id = ev.args.prescriptionId ?? ev.args[0];
+        try {
+          const rx = await contract.getPrescription(id);
 
-      const list = results.map(({ id, data }) => ({
-        id: id.toString(),
-        doctor: data.doctorName || data.doctor,
-        drug: data.drugName || data.drug,
-        dosage: data.dosage,
-        issuedAt: formatDate(data.issuedTimestamp || data.issuedAt),
-        expiry: formatDate(data.expiryTimestamp || data.expiry),
-        status: deriveStatus(data),
-      }));
+          let ipfsData = null;
+          if (rx.ipfsCID && rx.ipfsCID !== "PENDING_IPFS") {
+            try {
+              ipfsData = await fetchPrescriptionFromIPFS(rx.ipfsCID);
+            } catch {
+              // ignore IPFS fetch failures
+            }
+          }
+
+          list.push({
+            id: Number(id),
+            doctor: rx.doctor,
+            drugName: ipfsData?.drugName || "Prescription",
+            dosage: ipfsData?.dosage || "",
+            frequency: ipfsData?.frequency || "",
+            issuedAt: formatDate(rx.issuedAt),
+            expiry: formatDate(rx.expiryTimestamp),
+            status: deriveStatus(rx),
+            ipfsCID: rx.ipfsCID,
+          });
+        } catch {
+          // skip prescriptions that fail to load
+        }
+      }
 
       setPrescriptions(list);
     } catch (err) {
@@ -155,9 +179,46 @@ export default function PatientView() {
               </div>
             </Card>
           ) : prescriptions.length > 0 ? (
-            prescriptions.map((rx) => (
-              <PrescriptionCard key={rx.id} rx={rx} />
-            ))
+            <>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search by ID, drug name, doctor address, or status..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2.5 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
+              {(() => {
+                const q = searchQuery.toLowerCase();
+                const filtered = prescriptions.filter(
+                  (rx) =>
+                    !searchQuery ||
+                    String(rx.id).includes(q) ||
+                    formatRxId(rx.id).toLowerCase().includes(q) ||
+                    (rx.drugName && rx.drugName.toLowerCase().includes(q)) ||
+                    (rx.doctor && rx.doctor.toLowerCase().includes(q)) ||
+                    (rx.status && rx.status.toLowerCase().includes(q))
+                );
+                return filtered.length > 0 ? (
+                  filtered.map((rx) => (
+                    <PrescriptionCard key={rx.id} rx={rx} />
+                  ))
+                ) : (
+                  <Card className="text-center">
+                    <div className="flex flex-col items-center py-8">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                        <ClipboardList size={24} />
+                      </div>
+                      <p className="mt-3 text-sm text-slate-500">
+                        No prescriptions match your search.
+                      </p>
+                    </div>
+                  </Card>
+                );
+              })()}
+            </>
           ) : (
             <Card className="text-center">
               <div className="flex flex-col items-center py-8">
@@ -170,6 +231,15 @@ export default function PatientView() {
               </div>
             </Card>
           )}
+
+          <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+            <p className="text-sm text-slate-600">
+              Are you a doctor or pharmacy representative?{" "}
+              <Link to="/register" className="font-semibold text-brand-600 hover:text-brand-700 underline underline-offset-2">
+                Register here
+              </Link>
+            </p>
+          </div>
         </div>
       )}
     </div>
@@ -180,7 +250,7 @@ function PrescriptionCard({ rx }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(rx.id);
+    navigator.clipboard.writeText(formatRxId(rx.id));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -199,14 +269,16 @@ function PrescriptionCard({ rx }) {
       <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
         <div className="flex-1">
           <div className="mb-2 flex items-center gap-2 sm:mb-3 sm:gap-3">
-            <h3 className="text-base font-bold text-slate-900 sm:text-lg">Rx #{rx.id}</h3>
+            <h3 className="text-base font-bold text-slate-900 sm:text-lg">
+              Prescription {formatRxId(rx.id)} — {rx.drugName}
+            </h3>
             <Badge type={rx.status}>{rx.status}</Badge>
           </div>
 
           <div className="grid gap-1.5 text-sm">
             <InfoRow label="Doctor" value={rx.doctor} />
-            <InfoRow label="Drug" value={rx.drug} />
-            <InfoRow label="Dosage" value={rx.dosage} />
+            {rx.dosage && <InfoRow label="Dosage" value={rx.dosage} />}
+            {rx.frequency && <InfoRow label="Frequency" value={rx.frequency} />}
             <InfoRow label="Issued" value={rx.issuedAt} />
             <InfoRow label="Expiry" value={rx.expiry} />
           </div>

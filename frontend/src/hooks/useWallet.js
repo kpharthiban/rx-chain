@@ -12,6 +12,7 @@ const useWallet = () => {
   const [chainId, setChainId] = useState(null);
   const [provider, setProvider] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [walletLoading, setWalletLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const isWrongNetwork = account && chainId && !ACCEPTED_CHAIN_IDS.includes(chainId);
@@ -26,9 +27,17 @@ const useWallet = () => {
   }, []);
 
   useEffect(() => {
-    if (!window.ethereum) return;
+    if (!window.ethereum) {
+      setWalletLoading(false);
+      return;
+    }
 
     async function loadExistingWallet() {
+      if (sessionStorage.getItem("rxchain-disconnected") === "true") {
+        setWalletLoading(false);
+        return;
+      }
+
       try {
         const accounts = await window.ethereum.request({
           method: "eth_accounts",
@@ -46,6 +55,8 @@ const useWallet = () => {
         }
       } catch (err) {
         console.error("Failed to load wallet:", err);
+      } finally {
+        setWalletLoading(false);
       }
     }
 
@@ -61,6 +72,7 @@ const useWallet = () => {
         setProvider(null);
         setChainId(null);
       } else {
+        sessionStorage.removeItem("rxchain-disconnected");
         setAccount(accounts[0]);
         setupProvider();
       }
@@ -95,6 +107,7 @@ const useWallet = () => {
     try {
       setIsConnecting(true);
       setError(null);
+      sessionStorage.removeItem("rxchain-disconnected");
 
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
@@ -127,6 +140,7 @@ const useWallet = () => {
     setChainId(null);
     setProvider(null);
     setError(null);
+    sessionStorage.setItem("rxchain-disconnected", "true");
   }, []);
 
   const getRoleRedirectPath = useCallback((role) => {
@@ -149,6 +163,7 @@ const useWallet = () => {
     isConnecting,
     isWrongNetwork,
     error,
+    walletLoading,
     connectWallet,
     disconnectWallet,
     getRoleRedirectPath,

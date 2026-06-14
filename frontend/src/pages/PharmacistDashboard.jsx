@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Search,
   Pill,
@@ -6,8 +6,13 @@ import {
   Clock,
   AlertTriangle,
   XCircle,
+  FileQuestion,
   Wallet,
+  ScanLine,
+  Camera,
+  X,
 } from "lucide-react";
+import { Html5Qrcode } from "html5-qrcode";
 import { useNavigate } from "react-router-dom";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -16,6 +21,8 @@ import PageHeader from "../components/PageHeader";
 import TxStatus from "../components/TxStatus";
 import useWallet from "../hooks/useWallet";
 import { getContract } from "../utils/detectRole";
+import { fetchPrescriptionFromIPFS } from "../utils/ipfs";
+import formatRxId from "../utils/formatRxId";
 
 const statusConfig = {
   valid: {
@@ -51,11 +58,11 @@ const statusConfig = {
     label: "Revoked",
   },
   notfound: {
-    border: "border-red-200",
-    bg: "bg-red-50",
-    icon: <XCircle size={20} className="text-red-600" />,
-    heading: "text-red-900",
-    text: "text-red-800",
+    border: "border-slate-200",
+    bg: "bg-slate-50",
+    icon: <FileQuestion size={20} className="text-slate-500" />,
+    heading: "text-slate-900",
+    text: "text-slate-600",
     label: "Not Found",
   },
 };
@@ -84,37 +91,144 @@ export default function PharmacistDashboard() {
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
   const [history, setHistory] = useState([]);
+  const [historySearch, setHistorySearch] = useState("");
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState("");
+  const scannerRef = useRef(null);
+
+  const loadHistory = async () => {
+    if (!provider || !account) return;
+    try {
+      const contract = getContract(provider);
+      const filter = contract.filters.PrescriptionDispensed(null, account, null);
+      const events = await contract.queryFilter(filter);
+
+      const items = [];
+      for (const ev of events) {
+        const id = ev.args.prescriptionId != null
+          ? Number(ev.args.prescriptionId)
+          : Number(ev.args[0]);
+        const timestamp = ev.args.timestamp ?? ev.args[2];
+
+        let patient = "-", drugName = "Unknown", dosage = "", doctorAddr = "-";
+        try {
+          const rx = await contract.getPrescription(id);
+          patient = rx.patient;
+          doctorAddr = rx.doctor;
+
+          if (rx.ipfsCID && rx.ipfsCID !== "PENDING_IPFS") {
+            try {
+              const ipfsData = await fetchPrescriptionFromIPFS(rx.ipfsCID);
+              drugName = ipfsData?.drugName || "Unknown";
+              dosage = ipfsData?.dosage || "";
+            } catch { /* ignore IPFS errors */ }
+          }
+        } catch { /* ignore if prescription fetch fails */ }
+
+        items.push({
+          id,
+          timestamp: formatDate(timestamp),
+          patient: shortenAddress(patient),
+          patientFull: patient,
+          doctor: shortenAddress(doctorAddr),
+          drugName,
+          dosage,
+        });
+      }
+
+      setHistory(items);
+    } catch (err) {
+      console.error("Failed to load dispensing history:", err);
+    }
+  };
 
   useEffect(() => {
-    if (!provider || !account) return;
-
-    const loadHistory = async () => {
-      try {
-        const contract = getContract(provider);
-        const filter = contract.filters.PrescriptionDispensed(null, account, null);
-        const events = await contract.queryFilter(filter);
-        setHistory(
-          events.map((ev) => ({
-            id: ev.args.prescriptionId != null
-              ? ev.args.prescriptionId.toString()
-              : ev.args[0].toString(),
-            timestamp: ev.args.timestamp
-              ? formatDate(ev.args.timestamp)
-              : ev.args[2]
-                ? formatDate(ev.args[2])
-                : "-",
-          }))
-        );
-      } catch (err) {
-        console.error("Failed to load dispensing history:", err);
-      }
-    };
-
     loadHistory();
   }, [provider, account]);
 
-  const verifyPrescription = async () => {
-    if (!rxId.trim()) return;
+  const stopScanner = async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+      } catch { /* already stopped */ }
+      try {
+        scannerRef.current.clear();
+      } catch { /* already cleared */ }
+      scannerRef.current = null;
+    }
+  };
+
+  const handleScanSuccess = async (decodedText) => {
+    let scannedId = null;
+
+    try {
+      const data = JSON.parse(decodedText);
+      if (data.prescriptionId !== undefined && data.prescriptionId !== null) {
+        scannedId = String(data.prescriptionId);
+      }
+    } catch {
+      const plainId = decodedText.trim();
+      if (/^\d+$/.test(plainId)) {
+        scannedId = plainId;
+      }
+    }
+
+    if (scannedId === null) {
+      setScannerError("Invalid QR code format. Expected a prescription QR from RxChain.");
+      return;
+    }
+
+    await stopScanner();
+    setRxId(scannedId);
+    setScannerOpen(false);
+    setTimeout(() => verifyPrescription(scannedId), 200);
+  };
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+
+    let mounted = true;
+    const timer = setTimeout(() => {
+      if (!mounted) return;
+
+      const html5Qrcode = new Html5Qrcode("qr-reader");
+      scannerRef.current = html5Qrcode;
+
+      html5Qrcode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => handleScanSuccess(decodedText),
+        () => {}
+      ).catch((err) => {
+        console.error("Failed to start QR scanner:", err);
+        if (mounted) {
+          setScannerError("Could not access camera. Please allow camera permissions and try again.");
+        }
+      });
+    }, 300);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+      stopScanner();
+    };
+  }, [scannerOpen]);
+
+  useEffect(() => {
+    return () => { stopScanner(); };
+  }, []);
+
+  const verifyPrescription = async (overrideId) => {
+    const idToVerify = overrideId || rxId.trim();
+    if (!idToVerify) return;
+
+    const stripped = idToVerify.replace(/^RX-/i, "");
+    const parsedId = parseInt(stripped, 10);
+    if (isNaN(parsedId) || parsedId < 0 || String(parsedId) !== stripped) {
+      setResult({ status: "notfound" });
+      setTxStatus(null);
+      return;
+    }
 
     try {
       setTxStatus("pending");
@@ -122,64 +236,83 @@ export default function PharmacistDashboard() {
       setResult(null);
 
       const contract = getContract(provider);
-      const rx = await contract.getPrescription(rxId.trim());
 
-      setTxStatus(null);
-      setTxMessage("");
-
-      if (!rx.issuedAt || rx.issuedAt.toNumber() === 0) {
+      let rx;
+      try {
+        rx = await contract.getPrescription(parsedId);
+      } catch (fetchErr) {
+        console.warn("getPrescription failed:", fetchErr);
+        setTxStatus(null);
+        setTxMessage("");
         setResult({ status: "notfound" });
         return;
       }
 
-      if (rx.revoked) {
-        setResult({
-          status: "revoked",
-          doctor: shortenAddress(rx.doctor),
-          patient: shortenAddress(rx.patient),
-          dataHash: rx.dataHash,
-          issued: formatDate(rx.issuedAt),
-          expiry: formatDate(rx.expiryTimestamp),
-        });
+      setTxStatus(null);
+      setTxMessage("");
+
+      if (!rx.issuedAt || Number(rx.issuedAt) === 0) {
+        setResult({ status: "notfound" });
         return;
       }
 
-      if (rx.dispensed) {
-        setResult({
-          status: "dispensed",
-          doctor: shortenAddress(rx.doctor),
-          patient: shortenAddress(rx.patient),
-          dataHash: rx.dataHash,
-          issued: formatDate(rx.issuedAt),
-          expiry: formatDate(rx.expiryTimestamp),
-        });
-        return;
+      let ipfsData = null;
+      if (rx.ipfsCID && rx.ipfsCID !== "PENDING_IPFS") {
+        try {
+          ipfsData = await fetchPrescriptionFromIPFS(rx.ipfsCID);
+        } catch {
+          // ignore IPFS fetch failures
+        }
       }
 
-      if (Date.now() / 1000 > rx.expiryTimestamp.toNumber()) {
-        setResult({
-          status: "expired",
-          doctor: shortenAddress(rx.doctor),
-          patient: shortenAddress(rx.patient),
-          dataHash: rx.dataHash,
-          issued: formatDate(rx.issuedAt),
-          expiry: formatDate(rx.expiryTimestamp),
-        });
-        return;
-      }
-
-      setResult({
-        status: "valid",
+      const base = {
         doctor: shortenAddress(rx.doctor),
         patient: shortenAddress(rx.patient),
         dataHash: rx.dataHash,
         issued: formatDate(rx.issuedAt),
         expiry: formatDate(rx.expiryTimestamp),
-      });
+        ipfsCID: rx.ipfsCID,
+        drugName: ipfsData?.drugName || null,
+        dosage: ipfsData?.dosage || null,
+        frequency: ipfsData?.frequency || null,
+        duration: ipfsData?.duration || null,
+      };
+
+      if (rx.revoked) {
+        setResult({ ...base, status: "revoked" });
+        return;
+      }
+
+      if (rx.dispensed) {
+        setResult({ ...base, status: "dispensed" });
+        return;
+      }
+
+      if (Date.now() / 1000 > rx.expiryTimestamp.toNumber()) {
+        setResult({ ...base, status: "expired" });
+        return;
+      }
+
+      setResult({ ...base, status: "valid" });
     } catch (err) {
       console.error("Verification failed:", err);
+
+      const reason =
+        err.data?.message?.replace("VM Exception while processing transaction: revert ", "") ||
+        err.error?.data?.message?.replace("VM Exception while processing transaction: revert ", "") ||
+        err.error?.message ||
+        err.reason ||
+        err.message ||
+        "Failed to verify prescription.";
+
+      if (reason.includes("missing revert data") || reason.includes("does not exist")) {
+        setTxStatus(null);
+        setResult({ status: "notfound" });
+        return;
+      }
+
       setTxStatus("failed");
-      setTxMessage(err.reason || err.message || "Failed to verify prescription.");
+      setTxMessage(reason);
       setResult(null);
     }
   };
@@ -200,33 +333,29 @@ export default function PharmacistDashboard() {
       setTxMessage("Prescription has been marked as dispensed on-chain.");
 
       const rx = await contract.getPrescription(rxId.trim());
-      setResult({
+      setResult((prev) => ({
+        ...prev,
         status: "dispensed",
         doctor: shortenAddress(rx.doctor),
         patient: shortenAddress(rx.patient),
-        dataHash: rx.dataHash,
         issued: formatDate(rx.issuedAt),
         expiry: formatDate(rx.expiryTimestamp),
-      });
+      }));
 
-      const filter = contract.filters.PrescriptionDispensed(null, account, null);
-      const events = await contract.queryFilter(filter);
-      setHistory(
-        events.map((ev) => ({
-          id: ev.args.prescriptionId != null
-            ? ev.args.prescriptionId.toString()
-            : ev.args[0].toString(),
-          timestamp: ev.args.timestamp
-            ? formatDate(ev.args.timestamp)
-            : ev.args[2]
-              ? formatDate(ev.args[2])
-              : "-",
-        }))
-      );
+      await loadHistory();
     } catch (err) {
       console.error("Dispense failed:", err);
+
+      const reason =
+        err.data?.message?.replace("VM Exception while processing transaction: revert ", "") ||
+        err.error?.data?.message?.replace("VM Exception while processing transaction: revert ", "") ||
+        err.error?.message ||
+        err.reason ||
+        err.message ||
+        "Failed to dispense prescription.";
+
       setTxStatus("failed");
-      setTxMessage(err.reason || err.message || "Failed to dispense prescription.");
+      setTxMessage(reason);
     }
   };
 
@@ -284,11 +413,19 @@ export default function PharmacistDashboard() {
             <input
               value={rxId}
               onChange={(e) => setRxId(e.target.value)}
-              placeholder="Enter Prescription ID e.g. 001"
+              placeholder="Enter Prescription ID e.g. RX-001"
               onKeyDown={(e) => e.key === "Enter" && verifyPrescription()}
               className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
-            <Button onClick={verifyPrescription}>Verify</Button>
+            <Button onClick={() => verifyPrescription()}>Verify</Button>
+            <button
+              type="button"
+              onClick={() => { setScannerOpen(true); setScannerError(""); }}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <ScanLine size={16} />
+              <span className="hidden sm:inline">Scan QR</span>
+            </button>
           </div>
 
           {result && cfg && (
@@ -300,18 +437,35 @@ export default function PharmacistDashboard() {
                   {cfg.icon}
                   <h3 className={`font-bold ${cfg.heading}`}>
                     {result.status === "notfound"
-                      ? "No prescription found with this ID."
+                      ? "Prescription Not Found"
                       : "Prescription Found"}
                   </h3>
                 </div>
                 <Badge type={result.status}>{cfg.label}</Badge>
               </div>
 
+              {result.status === "notfound" && (
+                <p className="mt-1 text-sm text-slate-500">
+                  No prescription exists with ID {formatRxId(rxId)}. Please check the ID and try again.
+                </p>
+              )}
+
               {result.status !== "notfound" && (
                 <div className="grid gap-2">
+                  {result.drugName && (
+                    <InfoRow label="Drug" value={result.drugName} className={cfg.text} />
+                  )}
+                  {result.dosage && (
+                    <InfoRow label="Dosage" value={result.dosage} className={cfg.text} />
+                  )}
+                  {result.frequency && (
+                    <InfoRow label="Frequency" value={result.frequency} className={cfg.text} />
+                  )}
+                  {result.duration && (
+                    <InfoRow label="Duration" value={result.duration} className={cfg.text} />
+                  )}
                   <InfoRow label="Doctor" value={result.doctor} className={cfg.text} />
                   <InfoRow label="Patient" value={result.patient} className={cfg.text} />
-                  <InfoRow label="Drug Hash" value={result.dataHash} className={cfg.text} />
                   <InfoRow label="Issued" value={result.issued} className={cfg.text} />
                   <InfoRow label="Expiry" value={result.expiry} className={cfg.text} />
                 </div>
@@ -351,33 +505,155 @@ export default function PharmacistDashboard() {
           <TxStatus status={txStatus} message={txMessage} />
         </Card>
 
+        {scannerOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="mx-4 w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                  <Camera size={20} className="text-brand-600" />
+                  Scan Prescription QR
+                </h3>
+                <button
+                  onClick={() => setScannerOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <p className="mb-4 text-sm text-slate-500">
+                Point your camera at the patient's prescription QR code.
+              </p>
+
+              <div id="qr-reader" className="overflow-hidden rounded-xl" style={{ minHeight: "300px" }} />
+
+              {scannerError && (
+                <p className="mt-3 text-sm text-red-600">{scannerError}</p>
+              )}
+
+              <button
+                onClick={() => setScannerOpen(false)}
+                className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <Card>
           <h2 className="mb-5 text-lg font-bold text-slate-900">
             Dispensing History
           </h2>
 
           {history.length > 0 ? (
-            <div className="space-y-3">
-              {history.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 p-4 transition-colors hover:bg-slate-50"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
-                      <CheckCircle2 size={16} />
+            <>
+              <div className="mb-4 relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search by ID, drug name, patient, or doctor..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 pl-9 pr-4 py-2.5 text-sm transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                />
+              </div>
+
+              {(() => {
+                const q = historySearch.toLowerCase();
+                const filtered = history.filter(
+                  (h) =>
+                    !historySearch ||
+                    String(h.id).includes(q) ||
+                    formatRxId(h.id).toLowerCase().includes(q) ||
+                    h.drugName.toLowerCase().includes(q) ||
+                    h.patient.toLowerCase().includes(q) ||
+                    (h.patientFull && h.patientFull.toLowerCase().includes(q)) ||
+                    h.doctor.toLowerCase().includes(q)
+                );
+                return filtered.length > 0 ? (
+                  <>
+                    <div className="hidden overflow-hidden rounded-xl border border-slate-200 md:block">
+                      <table className="w-full text-left text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50/80">
+                          <tr>
+                            <th className="px-4 py-3 font-semibold text-slate-600">Rx ID</th>
+                            <th className="px-4 py-3 font-semibold text-slate-600">Drug Name</th>
+                            <th className="px-4 py-3 font-semibold text-slate-600">Dosage</th>
+                            <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
+                            <th className="px-4 py-3 font-semibold text-slate-600">Doctor</th>
+                            <th className="px-4 py-3 font-semibold text-slate-600">Dispensed</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filtered.map((item) => (
+                            <tr key={item.id} className="transition-colors hover:bg-slate-50/50">
+                              <td className="px-4 py-3.5">
+                                <code className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                  {formatRxId(item.id)}
+                                </code>
+                              </td>
+                              <td className="px-4 py-3.5 font-medium text-slate-900">{item.drugName}</td>
+                              <td className="px-4 py-3.5 text-slate-600">{item.dosage || "-"}</td>
+                              <td className="px-4 py-3.5 font-mono text-xs text-slate-500" title={item.patientFull}>
+                                {item.patient}
+                              </td>
+                              <td className="px-4 py-3.5 font-mono text-xs text-slate-500">{item.doctor}</td>
+                              <td className="px-4 py-3.5 text-slate-500">{item.timestamp}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                    <div>
-                      <p className="font-semibold text-slate-900">#{item.id}</p>
+
+                    <div className="space-y-3 md:hidden">
+                      {filtered.map((item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-xl border border-slate-200 p-4"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <p className="font-semibold text-slate-900">
+                              {formatRxId(item.id)} — {item.drugName}
+                            </p>
+                            <Badge type="dispensed">Dispensed</Badge>
+                          </div>
+                          <div className="space-y-1 text-sm">
+                            {item.dosage && (
+                              <div className="flex justify-between gap-3">
+                                <span className="text-slate-400">Dosage</span>
+                                <span className="text-slate-700">{item.dosage}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between gap-3">
+                              <span className="text-slate-400">Patient</span>
+                              <span className="font-mono text-xs text-slate-600">{item.patient}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-slate-400">Doctor</span>
+                              <span className="font-mono text-xs text-slate-600">{item.doctor}</span>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <span className="text-slate-400">Date</span>
+                              <span className="text-slate-600">{item.timestamp}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-12 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                      <Pill size={24} />
+                    </div>
+                    <p className="mt-3 text-sm text-slate-500">
+                      No dispensing records match your search.
+                    </p>
                   </div>
-                  <div className="text-right">
-                    <Badge type="dispensed">Dispensed</Badge>
-                    <p className="mt-1 text-xs text-slate-400">{item.timestamp}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+                );
+              })()}
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-12 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
