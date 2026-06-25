@@ -52,7 +52,7 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
         </Link>
 
         <nav className="hidden items-center gap-1 md:flex">
-          {links.map((link) => {
+          {account && links.map((link) => {
             const isActive = location.pathname === link.to;
 
             return (

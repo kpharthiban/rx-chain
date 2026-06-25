@@ -67,7 +67,7 @@ function ProtectedRoute({ children, allowedRoles, role, account, appReady }) {
 }
 
 export default function App() {
-  const { account, provider, walletLoading } = useWallet();
+  const { account, provider, walletLoading, isWrongNetwork, isTestNetwork } = useWallet();
 
   const [role, setRole] = useState("unregistered");
   const [appReady, setAppReady] = useState(false);
@@ -79,6 +79,12 @@ export default function App() {
     }
 
     if (!account || !provider) {
+      setRole("unregistered");
+      setAppReady(true);
+      return;
+    }
+
+    if (isWrongNetwork || isTestNetwork) {
       setRole("unregistered");
       setAppReady(true);
       return;
@@ -110,7 +116,7 @@ export default function App() {
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
           <Routes>
-            <Route path="/" element={<Home role={role} />} />
+            <Route path="/" element={<Home role={role} roleLoading={!appReady} />} />
             <Route path="/register" element={<RegisterGuard role={role}><Register /></RegisterGuard>} />
 
             <Route
@@ -159,7 +165,7 @@ export default function App() {
               path="/patient"
               element={
                 <ProtectedRoute
-                  allowedRoles={["patient"]}
+                  allowedRoles={["patient", "unregistered"]}
                   role={role}
                   account={account}
                   appReady={appReady}

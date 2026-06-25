@@ -60,7 +60,7 @@ const steps = [
   },
 ];
 
-export default function Home({ role }) {
+export default function Home({ role, roleLoading = false }) {
   const { account, connectWallet, getRoleRedirectPath } = useWallet();
   const navigate = useNavigate();
 
@@ -91,6 +91,15 @@ export default function Home({ role }) {
 
               <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
                 {account ? (
+                  roleLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-white/70">
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                      </svg>
+                      Detecting role...
+                    </div>
+                  ) : (
                   <>
                     {role === "admin" && (
                       <Link to="/admin">
@@ -116,7 +125,7 @@ export default function Home({ role }) {
                         </HeroButton>
                       </Link>
                     )}
-                    {role === "patient" && (
+                    {(role === "patient" || role === "unregistered") && (
                       <>
                         <Link to="/patient">
                           <HeroButton>
@@ -132,6 +141,7 @@ export default function Home({ role }) {
                       </>
                     )}
                   </>
+                  )
                 ) : (
                   <>
                     <HeroButton onClick={async () => {
@@ -254,50 +264,67 @@ export default function Home({ role }) {
           </h2>
           <p className="mt-2 text-sm text-slate-500">
             {account
-              ? "Jump back into your dashboard."
+              ? roleLoading
+                ? "Detecting your role…"
+                : "Jump back into your dashboard."
               : "Connect your MetaMask wallet to register as a doctor or pharmacy, or view your prescriptions."}
           </p>
           <div className="mt-5 flex flex-col justify-center gap-3 sm:mt-6 sm:flex-row">
             {account ? (
-              <>
-                {role === "admin" && (
-                  <Link to="/admin">
-                    <Button className="w-full sm:w-auto">Open Admin Panel</Button>
-                  </Link>
-                )}
-                {role === "doctor" && (
-                  <Link to="/doctor">
-                    <Button className="w-full sm:w-auto">Open Doctor Dashboard</Button>
-                  </Link>
-                )}
-                {role === "pharmacy" && (
-                  <Link to="/pharmacist">
-                    <Button className="w-full sm:w-auto">Open Pharmacist Dashboard</Button>
-                  </Link>
-                )}
-                {role === "patient" && (
-                  <>
-                    <Link to="/patient">
-                      <Button className="w-full sm:w-auto">View My Prescriptions</Button>
+              roleLoading ? (
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                  </svg>
+                  Checking role...
+                </div>
+              ) : (
+                <>
+                  {role === "admin" && (
+                    <Link to="/admin">
+                      <Button className="w-full sm:w-auto">Open Admin Panel</Button>
                     </Link>
-                    <Link to="/register">
-                      <Button variant="secondary" className="w-full sm:w-auto">
-                        Register as Doctor / Pharmacy
-                      </Button>
+                  )}
+                  {role === "doctor" && (
+                    <Link to="/doctor">
+                      <Button className="w-full sm:w-auto">Open Doctor Dashboard</Button>
                     </Link>
-                  </>
-                )}
-              </>
+                  )}
+                  {role === "pharmacy" && (
+                    <Link to="/pharmacist">
+                      <Button className="w-full sm:w-auto">Open Pharmacist Dashboard</Button>
+                    </Link>
+                  )}
+                  {(role === "patient" || role === "unregistered") && (
+                    <>
+                      <Link to="/patient">
+                        <Button className="w-full sm:w-auto">View My Prescriptions</Button>
+                      </Link>
+                      <Link to="/register">
+                        <Button variant="secondary" className="w-full sm:w-auto">
+                          Register as Doctor / Pharmacy
+                        </Button>
+                      </Link>
+                    </>
+                  )}
+                </>
+              )
             ) : (
               <>
                 <Link to="/register">
                   <Button className="w-full sm:w-auto">Register Now</Button>
                 </Link>
-                <Link to="/patient">
-                  <Button variant="secondary" className="w-full sm:w-auto">
-                    View Prescriptions
-                  </Button>
-                </Link>
+                <Button
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                  onClick={async () => {
+                    const addr = await connectWallet();
+                    if (addr) navigate(getRoleRedirectPath());
+                  }}
+                >
+                  Connect Wallet
+                </Button>
               </>
             )}
           </div>
