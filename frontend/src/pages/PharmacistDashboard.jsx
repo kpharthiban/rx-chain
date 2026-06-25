@@ -87,6 +87,7 @@ export default function PharmacistDashboard() {
   const { account, provider, connectWallet, getRoleRedirectPath } = useWallet();
   const navigate = useNavigate();
   const [rxId, setRxId] = useState("");
+  const [resolvedId, setResolvedId] = useState(null);
   const [result, setResult] = useState(null);
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
@@ -218,17 +219,24 @@ export default function PharmacistDashboard() {
     return () => { stopScanner(); };
   }, []);
 
+  const parseRxInput = (input) => {
+    const stripped = input.trim().replace(/^RX-0*/i, "");
+    const parsed = parseInt(stripped === "" ? "0" : stripped, 10);
+    return isNaN(parsed) || parsed < 0 ? null : parsed;
+  };
+
   const verifyPrescription = async (overrideId) => {
     const idToVerify = overrideId || rxId.trim();
     if (!idToVerify) return;
 
-    const stripped = idToVerify.replace(/^RX-/i, "");
-    const parsedId = parseInt(stripped, 10);
-    if (isNaN(parsedId) || parsedId < 0 || String(parsedId) !== stripped) {
+    const parsedId = parseRxInput(idToVerify);
+    if (parsedId === null) {
       setResult({ status: "notfound" });
       setTxStatus(null);
       return;
     }
+
+    setResolvedId(parsedId);
 
     try {
       setTxStatus("pending");
@@ -324,7 +332,7 @@ export default function PharmacistDashboard() {
       setTxStatus("pending");
       setTxMessage("Waiting for MetaMask confirmation...");
 
-      const tx = await contract.dispensePrescription(rxId.trim());
+      const tx = await contract.dispensePrescription(resolvedId);
 
       setTxMessage("Transaction submitted. Waiting for confirmation...");
       await tx.wait();
@@ -332,7 +340,7 @@ export default function PharmacistDashboard() {
       setTxStatus("confirmed");
       setTxMessage("Prescription has been marked as dispensed on-chain.");
 
-      const rx = await contract.getPrescription(rxId.trim());
+      const rx = await contract.getPrescription(resolvedId);
       setResult((prev) => ({
         ...prev,
         status: "dispensed",
@@ -572,76 +580,41 @@ export default function PharmacistDashboard() {
                     h.doctor.toLowerCase().includes(q)
                 );
                 return filtered.length > 0 ? (
-                  <>
-                    <div className="hidden overflow-hidden rounded-xl border border-slate-200 md:block">
-                      <table className="w-full text-left text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50/80">
-                          <tr>
-                            <th className="px-4 py-3 font-semibold text-slate-600">Rx ID</th>
-                            <th className="px-4 py-3 font-semibold text-slate-600">Drug Name</th>
-                            <th className="px-4 py-3 font-semibold text-slate-600">Dosage</th>
-                            <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
-                            <th className="px-4 py-3 font-semibold text-slate-600">Doctor</th>
-                            <th className="px-4 py-3 font-semibold text-slate-600">Dispensed</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filtered.map((item) => (
-                            <tr key={item.id} className="transition-colors hover:bg-slate-50/50">
-                              <td className="px-4 py-3.5">
-                                <code className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                                  {formatRxId(item.id)}
-                                </code>
-                              </td>
-                              <td className="px-4 py-3.5 font-medium text-slate-900">{item.drugName}</td>
-                              <td className="px-4 py-3.5 text-slate-600">{item.dosage || "-"}</td>
-                              <td className="px-4 py-3.5 font-mono text-xs text-slate-500" title={item.patientFull}>
-                                {item.patient}
-                              </td>
-                              <td className="px-4 py-3.5 font-mono text-xs text-slate-500">{item.doctor}</td>
-                              <td className="px-4 py-3.5 text-slate-500">{item.timestamp}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="space-y-3 md:hidden">
-                      {filtered.map((item) => (
-                        <div
-                          key={item.id}
-                          className="rounded-xl border border-slate-200 p-4"
-                        >
-                          <div className="mb-2 flex items-center justify-between">
-                            <p className="font-semibold text-slate-900">
-                              {formatRxId(item.id)} — {item.drugName}
-                            </p>
-                            <Badge type="dispensed">Dispensed</Badge>
+                  <div className="space-y-3">
+                    {filtered.map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 transition-colors hover:bg-slate-50"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <span className="rounded-lg bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-700 ring-1 ring-inset ring-sky-200">
+                              {formatRxId(item.id)}
+                            </span>
+                            <p className="font-semibold text-slate-900">{item.drugName}</p>
                           </div>
-                          <div className="space-y-1 text-sm">
-                            {item.dosage && (
-                              <div className="flex justify-between gap-3">
-                                <span className="text-slate-400">Dosage</span>
-                                <span className="text-slate-700">{item.dosage}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between gap-3">
-                              <span className="text-slate-400">Patient</span>
-                              <span className="font-mono text-xs text-slate-600">{item.patient}</span>
+                          <span className="shrink-0 text-xs text-slate-400">{item.timestamp}</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-3">
+                          {item.dosage && (
+                            <div>
+                              <p className="text-xs text-slate-400">Dosage</p>
+                              <p className="font-medium text-slate-700">{item.dosage}</p>
                             </div>
-                            <div className="flex justify-between gap-3">
-                              <span className="text-slate-400">Doctor</span>
-                              <span className="font-mono text-xs text-slate-600">{item.doctor}</span>
-                            </div>
-                            <div className="flex justify-between gap-3">
-                              <span className="text-slate-400">Date</span>
-                              <span className="text-slate-600">{item.timestamp}</span>
-                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs text-slate-400">Patient</p>
+                            <p className="font-medium text-slate-700" title={item.patientFull}>{item.patient}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-400">Issued by</p>
+                            <p className="font-medium text-slate-700">{item.doctor}</p>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-12 text-center">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">

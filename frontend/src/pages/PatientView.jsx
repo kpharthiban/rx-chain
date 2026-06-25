@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   ClipboardList,
@@ -8,6 +9,8 @@ import {
   QrCode,
   RefreshCw,
   Search,
+  X,
+  Maximize2,
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import Card from "../components/Card";
@@ -148,8 +151,8 @@ export default function PatientView() {
                 <p className="text-xs font-medium text-slate-500">
                   Connected Patient Wallet
                 </p>
-                <p className="font-mono text-sm font-semibold text-slate-900">
-                  {account}
+                <p className="text-sm font-semibold text-slate-900">
+                  {account.slice(0, 6)}...{account.slice(-4)}
                 </p>
               </div>
             </div>
@@ -191,16 +194,19 @@ export default function PatientView() {
                 />
               </div>
               {(() => {
+                const statusOrder = { active: 0, dispensed: 1, expired: 2, revoked: 3 };
                 const q = searchQuery.toLowerCase();
-                const filtered = prescriptions.filter(
-                  (rx) =>
-                    !searchQuery ||
-                    String(rx.id).includes(q) ||
-                    formatRxId(rx.id).toLowerCase().includes(q) ||
-                    (rx.drugName && rx.drugName.toLowerCase().includes(q)) ||
-                    (rx.doctor && rx.doctor.toLowerCase().includes(q)) ||
-                    (rx.status && rx.status.toLowerCase().includes(q))
-                );
+                const filtered = prescriptions
+                  .filter(
+                    (rx) =>
+                      !searchQuery ||
+                      String(rx.id).includes(q) ||
+                      formatRxId(rx.id).toLowerCase().includes(q) ||
+                      (rx.drugName && rx.drugName.toLowerCase().includes(q)) ||
+                      (rx.doctor && rx.doctor.toLowerCase().includes(q)) ||
+                      (rx.status && rx.status.toLowerCase().includes(q))
+                  )
+                  .sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9));
                 return filtered.length > 0 ? (
                   filtered.map((rx) => (
                     <PrescriptionCard key={rx.id} rx={rx} />
@@ -232,7 +238,7 @@ export default function PatientView() {
             </Card>
           )}
 
-          <div className="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
             <p className="text-sm text-slate-600">
               Are you a doctor or pharmacy representative?{" "}
               <Link to="/register" className="font-semibold text-brand-600 hover:text-brand-700 underline underline-offset-2">
@@ -248,6 +254,7 @@ export default function PatientView() {
 
 function PrescriptionCard({ rx }) {
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(formatRxId(rx.id));
@@ -264,62 +271,100 @@ function PrescriptionCard({ rx }) {
           ? "border-l-amber-400"
           : "border-l-red-400";
 
+  const qrValue = JSON.stringify({ prescriptionId: rx.id, contract: CONTRACT_ADDRESS });
+
   return (
-    <Card className={`border-l-4 p-4 sm:p-6 ${borderAccent}`}>
-      <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
-        <div className="flex-1">
-          <div className="mb-2 flex items-center gap-2 sm:mb-3 sm:gap-3">
-            <h3 className="text-base font-bold text-slate-900 sm:text-lg">
-              Prescription {formatRxId(rx.id)} — {rx.drugName}
-            </h3>
-            <Badge type={rx.status}>{rx.status}</Badge>
+    <>
+      <Card className={`border-l-4 p-4 sm:p-6 ${borderAccent}`}>
+        <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2 sm:mb-3">
+              <h3 className="text-base font-bold text-slate-900 sm:text-lg">
+                Prescription {formatRxId(rx.id)} — {rx.drugName}
+              </h3>
+              <Badge type={rx.status}>{rx.status}</Badge>
+            </div>
+
+            <div className="grid gap-1.5 text-sm">
+              <InfoRow label="Doctor" value={rx.doctor} truncate />
+              {rx.dosage && <InfoRow label="Dosage" value={rx.dosage} />}
+              {rx.frequency && <InfoRow label="Frequency" value={rx.frequency} />}
+              <InfoRow label="Issued" value={rx.issuedAt} />
+              <InfoRow label="Expiry" value={rx.expiry} />
+            </div>
+
+            <button
+              onClick={handleCopy}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 size={14} className="text-emerald-600" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy size={14} />
+                  Copy Prescription ID
+                </>
+              )}
+            </button>
           </div>
 
-          <div className="grid gap-1.5 text-sm">
-            <InfoRow label="Doctor" value={rx.doctor} />
-            {rx.dosage && <InfoRow label="Dosage" value={rx.dosage} />}
-            {rx.frequency && <InfoRow label="Frequency" value={rx.frequency} />}
-            <InfoRow label="Issued" value={rx.issuedAt} />
-            <InfoRow label="Expiry" value={rx.expiry} />
-          </div>
-
-          <button
-            onClick={handleCopy}
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
-          >
-            {copied ? (
-              <>
-                <CheckCircle2 size={14} className="text-emerald-600" />
-                Copied!
-              </>
-            ) : (
-              <>
-                <Copy size={14} />
-                Copy Prescription ID
-              </>
-            )}
-          </button>
+          {rx.status === "active" && (
+            <button
+              onClick={() => setQrOpen(true)}
+              className="group flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 transition-all hover:border-brand-300 hover:shadow-md"
+            >
+              <QRCodeCanvas value={qrValue} size={110} level="M" />
+              <span className="flex items-center gap-1 text-xs text-slate-400 group-hover:text-brand-600">
+                <Maximize2 size={11} />
+                Tap to enlarge
+              </span>
+            </button>
+          )}
         </div>
+      </Card>
 
-        {rx.status === "active" && (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-4">
-            <QRCodeCanvas value={JSON.stringify({ prescriptionId: rx.id, contract: CONTRACT_ADDRESS })} size={110} level="M" />
-            <span className="flex items-center gap-1 text-xs text-slate-400">
-              <QrCode size={12} />
-              Scan to verify
+      {qrOpen && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setQrOpen(false)}
+          />
+          <div className="relative flex flex-col items-center gap-5 rounded-2xl bg-white p-8 shadow-2xl">
+            <div className="flex w-full items-center justify-between">
+              <div>
+                <p className="font-bold text-slate-900">{formatRxId(rx.id)} — {rx.drugName}</p>
+                <p className="mt-0.5 text-xs text-slate-500">Show this QR to the pharmacist</p>
+              </div>
+              <button
+                onClick={() => setQrOpen(false)}
+                className="ml-4 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <QRCodeCanvas value={qrValue} size={240} level="M" />
+
+            <span className="flex items-center gap-1.5 text-xs text-slate-400">
+              <QrCode size={13} />
+              Scan to verify on RxChain
             </span>
           </div>
-        )}
-      </div>
-    </Card>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
-function InfoRow({ label, value }) {
+function InfoRow({ label, value, truncate = false }) {
   return (
-    <div className="flex items-baseline gap-2">
-      <span className="w-16 shrink-0 text-slate-400">{label}</span>
-      <span className="font-medium text-slate-700">{value}</span>
+    <div className="flex items-baseline gap-2 overflow-hidden">
+      <span className="w-20 shrink-0 text-slate-400">{label}</span>
+      <span className={`font-medium text-slate-700 ${truncate ? "truncate" : ""}`}>{value}</span>
     </div>
   );
 }

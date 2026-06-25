@@ -1,34 +1,25 @@
 import { useState } from "react";
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight, FlaskConical, X } from "lucide-react";
 import useWallet from "../hooks/useWallet";
 import { SEPOLIA_CHAIN_ID } from "../config/contract";
 
-/**
- * NetworkWarning
- * Renders a sticky banner below the navbar when the user's wallet
- * is connected but on the wrong network.
- *
- * Provides a one-click "Switch to Sepolia" button that triggers
- * MetaMask's network-switch prompt automatically.
- *
- * Returns null when the network is correct or no wallet is connected.
- */
 export default function NetworkWarning() {
-  const { account, isWrongNetwork } = useWallet();
-  const [dismissed, setDismissed] = useState(false);
+  const { account, isWrongNetwork, isTestNetwork } = useWallet();
+  const [dismissedWrong, setDismissedWrong] = useState(false);
+  const [dismissedTest, setDismissedTest]   = useState(false);
+  const [switching, setSwitching] = useState(false);
 
-  // Nothing to show if wallet isn't connected, or network is fine, or user dismissed
-  if (!account || !isWrongNetwork || dismissed) return null;
+  if (!account) return null;
 
   const handleSwitch = async () => {
     if (!window.ethereum) return;
+    setSwitching(true);
     try {
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: SEPOLIA_CHAIN_ID }],
       });
     } catch (err) {
-      // Error code 4902 means the chain hasn't been added to MetaMask yet
       if (err.code === 4902) {
         try {
           await window.ethereum.request({
@@ -44,34 +35,87 @@ export default function NetworkWarning() {
             ],
           });
         } catch {
-          // User rejected adding the network — do nothing
+          // User rejected adding the network
         }
       }
+    } finally {
+      setSwitching(false);
     }
   };
 
-  return (
-    <div className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2.5 sm:px-6">
-      <div className="flex items-center gap-2 text-sm font-medium text-red-700">
-        <AlertTriangle size={15} className="shrink-0" />
-        <span>
-          Wrong network. Please switch MetaMask to Sepolia Testnet, Hardhat Local (chainId 31337), or Ganache (chainId 1337).{" "}
-          <button
-            onClick={handleSwitch}
-            className="underline underline-offset-2 hover:text-red-900"
-          >
-            Switch to Sepolia
-          </button>
-        </span>
-      </div>
+  if (isWrongNetwork && !dismissedWrong) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[100] w-full max-w-sm animate-slide-up">
+        <div className="relative overflow-hidden rounded-xl border border-red-200 bg-red-50 px-4 py-3.5 shadow-lg">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 shrink-0">
+              <AlertTriangle size={16} className="text-red-500" />
+            </span>
 
-      <button
-        onClick={() => setDismissed(true)}
-        title="Dismiss"
-        className="shrink-0 rounded p-0.5 text-red-400 transition-colors hover:bg-red-100 hover:text-red-700"
-      >
-        <X size={15} />
-      </button>
-    </div>
-  );
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-red-800">Wrong Network</p>
+              <p className="mt-0.5 text-sm text-red-700">
+                This app runs on Sepolia Testnet. Switch to continue.
+              </p>
+              <button
+                onClick={handleSwitch}
+                disabled={switching}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArrowLeftRight size={13} />
+                {switching ? "Switching..." : "Switch to Sepolia"}
+              </button>
+            </div>
+
+            <button
+              onClick={() => setDismissedWrong(true)}
+              title="Dismiss"
+              className="shrink-0 rounded p-0.5 text-red-400 transition-colors hover:bg-red-100 hover:text-red-700"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTestNetwork && !dismissedTest) {
+    return (
+      <div className="fixed bottom-4 right-4 z-[100] w-full max-w-sm animate-slide-up">
+        <div className="relative overflow-hidden rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5 shadow-lg">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 shrink-0">
+              <FlaskConical size={16} className="text-amber-500" />
+            </span>
+
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-amber-800">Test Network</p>
+              <p className="mt-0.5 text-sm text-amber-700">
+                You're on a local test network. Switch to Sepolia to use the deployed contracts.
+              </p>
+              <button
+                onClick={handleSwitch}
+                disabled={switching}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <ArrowLeftRight size={13} />
+                {switching ? "Switching..." : "Switch to Sepolia"}
+              </button>
+            </div>
+
+            <button
+              onClick={() => setDismissedTest(true)}
+              title="Dismiss"
+              className="shrink-0 rounded p-0.5 text-amber-400 transition-colors hover:bg-amber-100 hover:text-amber-700"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }

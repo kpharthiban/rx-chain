@@ -20,7 +20,7 @@ export default {
       },
       fontFamily: {
         sans: [
-          "Inter",
+          "Plus Jakarta Sans",
           "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",

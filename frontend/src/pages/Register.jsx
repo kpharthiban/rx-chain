@@ -359,7 +359,7 @@ export default function Register() {
         </Card>
       )}
 
-      {(registrationStatus === "none" || registrationStatus === "rejected" || registrationStatus === null) && !statusLoading && (
+      {account && (registrationStatus === "none" || registrationStatus === "rejected" || registrationStatus === null) && !statusLoading && (
       <Card>
         <div className="mb-5 flex rounded-xl bg-slate-100 p-1 sm:mb-6">
           <button

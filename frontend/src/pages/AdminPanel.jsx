@@ -104,6 +104,10 @@ export default function AdminPanel() {
   const [txStatus, setTxStatus] = useState(null);
   const [txMessage, setTxMessage] = useState("");
 
+  const [rejectModal, setRejectModal] = useState({ open: false, type: null, request: null });
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectReasonError, setRejectReasonError] = useState("");
+
   const loadRequests = async () => {
     try {
       if (!provider) return;
@@ -261,8 +265,6 @@ export default function AdminPanel() {
       const rawStatus = req.status;
       const statusNum = rawStatus?.toNumber ? rawStatus.toNumber() : Number(rawStatus);
 
-      console.log("Pre-flight check — request ID:", request.id, "raw status:", rawStatus, "parsed:", statusNum);
-
       if (!isNaN(statusNum) && statusNum !== 0) {
         const statusLabels = { 1: "already approved", 2: "already rejected" };
         setTxStatus("failed");
@@ -293,13 +295,21 @@ export default function AdminPanel() {
     }
   };
 
-  const handleReject = async (type, request) => {
-    const reason = window.prompt(
-      `Enter rejection reason for ${request.name}:`,
-      "Invalid or incomplete supporting document"
-    );
+  const handleReject = (type, request) => {
+    setRejectReason("");
+    setRejectReasonError("");
+    setRejectModal({ open: true, type, request });
+  };
 
-    if (!reason) return;
+  const confirmReject = async () => {
+    const trimmed = rejectReason.trim();
+    if (!trimmed) {
+      setRejectReasonError("Rejection reason is required.");
+      return;
+    }
+
+    const { type, request } = rejectModal;
+    setRejectModal({ open: false, type: null, request: null });
 
     try {
       const contract = getContract(provider);
@@ -310,8 +320,6 @@ export default function AdminPanel() {
 
       const rawStatus = req.status;
       const statusNum = rawStatus?.toNumber ? rawStatus.toNumber() : Number(rawStatus);
-
-      console.log("Pre-flight check — request ID:", request.id, "raw status:", rawStatus, "parsed:", statusNum);
 
       if (!isNaN(statusNum) && statusNum !== 0) {
         const statusLabels = { 1: "already approved", 2: "already rejected" };
@@ -325,8 +333,8 @@ export default function AdminPanel() {
 
       const tx =
         type === "doctor"
-          ? await contract.rejectDoctor(request.id, reason)
-          : await contract.rejectPharmacy(request.id, reason);
+          ? await contract.rejectDoctor(request.id, trimmed)
+          : await contract.rejectPharmacy(request.id, trimmed);
 
       setTxMessage("Transaction submitted. Waiting for confirmation...");
 
@@ -515,7 +523,7 @@ export default function AdminPanel() {
                         </td>
 
                         <td
-                          className="px-4 py-3.5 font-mono text-xs text-slate-500"
+                          className="px-4 py-3.5 text-xs text-slate-500"
                           title={item.requester}
                         >
                           {item.wallet}
@@ -582,14 +590,14 @@ export default function AdminPanel() {
 
                       <div className="flex justify-between gap-3">
                         <span className="text-slate-400">Wallet</span>
-                        <span className="font-mono text-xs text-slate-600">
+                        <span className="text-xs text-slate-600">
                           {item.wallet}
                         </span>
                       </div>
 
                       <div className="flex justify-between gap-3">
                         <span className="text-slate-400">IPFS CID</span>
-                        <span className="max-w-[160px] truncate font-mono text-xs text-slate-600">
+                        <span className="max-w-[160px] truncate text-xs text-slate-600">
                           {item.ipfsCID}
                         </span>
                       </div>
@@ -660,7 +668,7 @@ export default function AdminPanel() {
                                 {entity.license}
                               </code>
                             </td>
-                            <td className="px-4 py-3.5 font-mono text-xs text-slate-500" title={entity.address}>
+                            <td className="px-4 py-3.5 text-xs text-slate-500" title={entity.address}>
                               {entity.wallet}
                             </td>
                             <td className="px-4 py-3.5">
@@ -751,7 +759,7 @@ export default function AdminPanel() {
                                 {entity.license}
                               </code>
                             </td>
-                            <td className="px-4 py-3.5 font-mono text-xs text-slate-500" title={entity.address}>
+                            <td className="px-4 py-3.5 text-xs text-slate-500" title={entity.address}>
                               {entity.wallet}
                             </td>
                           </tr>
@@ -775,7 +783,7 @@ export default function AdminPanel() {
                               {entity.license} &middot; {entity.wallet}
                             </p>
                           </div>
-                          <Badge type="failed">Revoked</Badge>
+                          <Badge type="revoked">Revoked</Badge>
                         </div>
                       </div>
                     ))}
@@ -790,6 +798,70 @@ export default function AdminPanel() {
 
         <TxStatus status={txStatus} message={txMessage} />
       </Card>
+
+      {rejectModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setRejectModal({ open: false, type: null, request: null })}
+          />
+
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="text-base font-semibold text-slate-900">
+              Reject Request
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Rejecting{" "}
+              <span className="font-medium text-slate-700">
+                {rejectModal.request?.name}
+              </span>
+              . This action will be recorded on-chain.
+            </p>
+
+            <div className="mt-4">
+              <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                Rejection Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => {
+                  setRejectReason(e.target.value);
+                  if (e.target.value.trim()) setRejectReasonError("");
+                }}
+                placeholder="e.g. Invalid or incomplete supporting document"
+                className={`w-full resize-none rounded-xl border px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 ${
+                  rejectReasonError
+                    ? "border-red-400 focus:border-red-400 focus:ring-red-400/20"
+                    : "border-slate-200 focus:border-brand-500 focus:ring-brand-500/20"
+                }`}
+              />
+              {rejectReasonError && (
+                <p className="mt-1.5 flex items-center gap-1 text-xs font-medium text-red-600">
+                  <X size={12} />
+                  {rejectReasonError}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setRejectModal({ open: false, type: null, request: null })}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmReject}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700"
+              >
+                <X size={14} />
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

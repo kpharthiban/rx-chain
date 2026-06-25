@@ -81,7 +81,7 @@ export default function Home({ role }) {
               <h1 className="mt-4 text-2xl font-bold leading-tight sm:text-3xl md:text-4xl lg:text-5xl">
                 Stop forged prescriptions.
                 <br />
-                <span className="text-brand-100">Protect every patient.</span>
+                <span className="block mt-2 text-brand-100">Protect every patient.</span>
               </h1>
 
               <p className="mt-4 max-w-lg text-sm text-brand-100/90 sm:mt-5 sm:text-base md:text-lg">
@@ -217,7 +217,7 @@ export default function Home({ role }) {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:gap-x-10 sm:gap-y-5 md:grid-cols-4">
           {steps.map((step, i) => (
             <div key={step.title} className="relative">
               <Card hover className="relative h-full">
@@ -238,8 +238,8 @@ export default function Home({ role }) {
               </Card>
 
               {i < steps.length - 1 && (
-                <div className="absolute -right-2 top-1/2 z-10 hidden -translate-y-1/2 text-slate-300 sm:-right-3 md:block">
-                  <ArrowRight size={16} />
+                <div className="absolute left-full top-1/2 z-10 hidden w-8 -translate-y-1/2 items-center justify-center md:flex sm:w-10">
+                  <ArrowRight size={20} className="text-slate-400" strokeWidth={2.5} />
                 </div>
               )}
             </div>

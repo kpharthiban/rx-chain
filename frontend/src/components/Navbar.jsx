@@ -4,12 +4,9 @@ import { Shield, Menu, X, Wifi, WifiOff, LogOut } from "lucide-react";
 
 import Button from "./Button";
 import useWallet from "../hooks/useWallet";
-import NetworkWarning from "./NetworkWarning";
-
-const SEPOLIA_CHAIN_ID = "0xaa36a7";
 
 export default function Navbar({ role = "patient", roleLoading = false }) {
-  const { account, chainId, connectWallet, disconnectWallet } = useWallet();
+  const { account, connectWallet, disconnectWallet, isWrongNetwork, isTestNetwork } = useWallet();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const location = useLocation();
@@ -18,8 +15,6 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
   const shortAddress = account
     ? `${account.slice(0, 6)}...${account.slice(-4)}`
     : "";
-
-  const isWrongNetwork = account && chainId && chainId !== SEPOLIA_CHAIN_ID;
 
   const links = getLinksForRole(role);
 
@@ -83,7 +78,7 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
             </span>
           )}
 
-          {!roleLoading && role && (
+          {!roleLoading && role && role !== "unregistered" && account && (
             <span className="hidden rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold capitalize text-brand-700 ring-1 ring-inset ring-brand-100 md:inline-flex">
               {role}
             </span>
@@ -95,6 +90,11 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
                 <span className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 ring-1 ring-inset ring-red-200">
                   <WifiOff size={12} />
                   Wrong Network
+                </span>
+              ) : isTestNetwork ? (
+                <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-inset ring-amber-200">
+                  <WifiOff size={12} />
+                  Test Network
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
@@ -108,7 +108,7 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
           {account ? (
             <div className="flex items-center gap-1.5">
               <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 sm:rounded-xl sm:px-3 sm:py-2 sm:text-sm">
-                <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                <div className={`h-2 w-2 rounded-full ${isWrongNetwork ? "bg-red-500" : isTestNetwork ? "bg-amber-400" : "bg-emerald-500"}`} />
                 {shortAddress}
               </div>
 
@@ -135,18 +135,23 @@ export default function Navbar({ role = "patient", roleLoading = false }) {
         </div>
       </div>
 
-      <NetworkWarning />
-
       {mobileOpen && (
         <div className="animate-slide-up border-t border-slate-200/80 bg-white px-4 pb-4 pt-3 md:hidden">
           {account && isWrongNetwork && (
             <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
               <WifiOff size={12} />
-              Please switch to Sepolia Testnet
+              Wrong network — please switch to Sepolia
             </div>
           )}
 
-          {account && !isWrongNetwork && (
+          {account && isTestNetwork && (
+            <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+              <WifiOff size={12} />
+              Test network — switch to Sepolia for deployed contracts
+            </div>
+          )}
+
+          {account && !isWrongNetwork && !isTestNetwork && (
             <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
               <Wifi size={12} />
               Connected to Sepolia
