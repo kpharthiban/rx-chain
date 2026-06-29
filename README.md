@@ -51,7 +51,7 @@ cp frontend/.env.example frontend/.env
 
 ## 3. Deploy the Contract
 
-Make sure your deployer wallet has Sepolia ETH ([faucet](https://sepoliafaucet.com)).
+Make sure your deployer wallet has Sepolia ETH ([faucet](https://cloud.google.com/application/web3/faucet/ethereum/sepolia)).
 
 ```sh
 npx hardhat run scripts/deploy.js --network sepolia
